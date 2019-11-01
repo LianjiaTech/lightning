@@ -1,0 +1,40 @@
+global:
+  log-level: 3
+  log-output: lightning.log
+  demonize: false
+  charset: utf8mb4
+  hex-string: false
+  cpu: 0
+  verbose: false
+  verbose-verbose: false
+  time-zone: Asia/Shanghai
+mysql:
+  binlog-file: []
+  schema-file: ""
+  master-info: ""
+  replicate-from-current-position: false
+  sync-interval: 1s
+  read-timeout: 3s
+  retry-count: 100
+filters:
+  tables: []
+  ignore-tables:
+  - mysql.%
+  - percona.%
+  event-types: []
+  thread-id: 0
+  server-id: 0
+  start-position: 0
+  stop-position: 0
+  start-datetime: ""
+  stop-datetime: ""
+  include-gtid-set: ""
+  exclude-gtid-set: ""
+rebuild:
+  plugin: sql
+  complete-insert: false
+  extended-insert-count: 0
+  ignore-columns: []
+  replace: false
+  sleep-interval: 0s
+  lua-script: ""

@@ -1,0 +1,77 @@
+# 全局配置
+global:
+  # 日志级别
+  log-level: 3
+  # 日志文件名
+  log-output: lightning.log
+  # 是否开启守护进程模式
+  demonize: false
+  # 数据库字符集
+  charset: utf8mb4
+  # CPU 使用限制
+  cpu: 0
+  # Verbose 模式，打印更多信息
+  verbose: false
+  # 设置时区，默认 Asia/Shanghai
+  # time-zone: UTC
+  time-zone: Asia/Shanghai
+  # 是否将 VARCHAR, CHAR, STRING 等数据类型转成 HEX, 防止不必要转换
+  hex-string: false
+# 日志源
+mysql:
+  # 从文件读取二进制日志
+  binlog-file: ["test/binlog.000002"]
+  # 建表语句文件
+  schema-file: test/schema.sql
+  # MySQL 源
+  master-info: etc/master.info
+  # master-info sync interval
+  sync-interval: 1s
+  # Binlog Dump I/O read timeout.
+  read-timeout: 60s
+# 过滤器
+filters:
+  # 表过滤器，只处理特定表
+  tables:
+    - test.%
+  # 表过滤器，忽略特殊定表
+  ignore-tables:
+    - test.ignore
+  # 事件过滤器，只处理特定类型 SQL
+  event-types:
+    - insert
+    - update
+    - delete
+    - create
+  # 线程过滤器，只处理某个线程的更新
+  thread-id: 0
+  # 主库过滤器，只处理特定主库的更新
+  server-id: 0
+  # 日志起始位点
+  start-position: 0
+  # 日志结束位点
+  stop-position: 0
+  # 日志开始时间
+  start-datetime: ""
+  # 日志结束时间
+  stop-datetime: ""
+  # GTID 过滤器，只处理特定 gtid_set 的事件
+  include-gtid-set: ""
+  # GTID 过滤器，忽略特殊 gtid_set 的事件
+  exclude-gtid-set: ""
+# 重建规则
+rebuild:
+  # 插件：sql, flashback, stat, lua
+  plugin: sql
+  # INSERT 语句是否补全列
+  complete-insert: false
+  # 生成 SQL 语句省略某些列，如： INSERT 忽略主键
+  ignore-columns: []
+  # INSERT 语句多个 VALUES 合并
+  extended-insert-count: 0
+  # 使用 REPLACE INTO 替代 INSERT INTO
+  replace: false
+  # 两条 SQL 语句之前添加 sleep 间隔，最小精度 us
+  sleep-interval: 0s
+  # lua 插件脚本位置
+  lua-script: plugin/demo.flashback.lua

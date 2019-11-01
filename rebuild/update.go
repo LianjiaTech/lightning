@@ -1,0 +1,229 @@
+/*
+ * Copyright(c)  2019 Lianjia, Inc.  All Rights Reserved
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package rebuild
+
+import (
+	"fmt"
+	"strings"
+
+	"github.com/LianjiaTech/lightning/common"
+
+	"github.com/siddontang/go-mysql/replication"
+	lua "github.com/yuin/gopher-lua"
+)
+
+// UpdateRebuild ...
+func UpdateRebuild(event *replication.BinlogEvent) string {
+	switch common.Config.Rebuild.Plugin {
+	case "sql":
+		UpdateQuery(event)
+	case "flashback":
+		UpdateRollbackQuery(event)
+	case "stat":
+		UpdateStat(event)
+	case "lua":
+		UpdateLua(event)
+	default:
+		fmt.Println("InsertRebuild ...")
+	}
+	return ""
+}
+
+// UpdateQuery ...
+func UpdateQuery(event *replication.BinlogEvent) {
+	table := RowEventTable(event)
+	ev := event.Event.(*replication.RowsEvent)
+	values := BuildValues(ev)
+
+	var where []string
+	var set []string
+
+	if ok := PrimaryKeys[table]; ok != nil {
+		for odd, value := range values {
+			if odd%2 == 0 {
+				where = []string{}
+				set = []string{}
+				for _, col := range PrimaryKeys[table] {
+					for i, c := range Columns[table] {
+						if c == col {
+							if value[i] == "NULL" {
+								where = append(where, fmt.Sprintf("%s IS NULL", col))
+							} else {
+								where = append(where, fmt.Sprintf("%s = %s", col, value[i]))
+							}
+						}
+					}
+				}
+			} else {
+				if len(common.Config.Rebuild.IgnoreColumns) > 0 {
+					for i, col := range Columns[table] {
+						ignore := false
+						for _, c := range common.Config.Rebuild.IgnoreColumns {
+							if c == strings.Trim(col, "`") {
+								ignore = true
+							}
+						}
+						if !ignore {
+							set = append(set, fmt.Sprintf("%s = %s", col, value[i]))
+						}
+					}
+				} else {
+					for i, c := range Columns[table] {
+						set = append(set, fmt.Sprintf("%s = %s", c, value[i]))
+					}
+				}
+				fmt.Printf("UPDATE %s SET %s WHERE %s LIMIT 1;\n", table, strings.Join(set, ", "), strings.Join(where, " AND "))
+			}
+		}
+	} else {
+		for odd, value := range values {
+			if odd%2 == 0 {
+				where = []string{}
+				set = []string{}
+				for i, v := range value {
+					if v == "NULL" {
+						where = append(where, fmt.Sprintf("@%d IS NULL", i))
+					} else {
+						where = append(where, fmt.Sprintf("@%d = %s", i, v))
+					}
+				}
+			} else {
+				for i, v := range value {
+					set = append(set, fmt.Sprintf("@%d = %s", i, v))
+				}
+				fmt.Printf("-- UPDATE %s SET %s WHERE %s LIMIT 1;\n", table, strings.Join(set, ", "), strings.Join(where, " AND "))
+			}
+		}
+	}
+}
+
+// UpdateRollbackQuery ...
+func UpdateRollbackQuery(event *replication.BinlogEvent) {
+	table := RowEventTable(event)
+	ev := event.Event.(*replication.RowsEvent)
+	values := BuildValues(ev)
+
+	var where []string
+	var set []string
+
+	if ok := PrimaryKeys[table]; ok != nil {
+		for odd, value := range values {
+			if odd%2 == 0 {
+				where = []string{}
+				set = []string{}
+				if len(common.Config.Rebuild.IgnoreColumns) > 0 {
+					for i, col := range Columns[table] {
+						ignore := false
+						for _, c := range common.Config.Rebuild.IgnoreColumns {
+							if c == strings.Trim(col, "`") {
+								ignore = true
+							}
+						}
+						if !ignore {
+							set = append(set, fmt.Sprintf("%s = %s", col, value[i]))
+						}
+					}
+				} else {
+					for i, c := range Columns[table] {
+						set = append(set, fmt.Sprintf("%s = %s", c, value[i]))
+					}
+				}
+			} else {
+				for _, col := range PrimaryKeys[table] {
+					for i, c := range Columns[table] {
+						if c == col {
+							if value[i] == "NULL" {
+								where = append(where, fmt.Sprintf("%s IS NULL", col))
+							} else {
+								where = append(where, fmt.Sprintf("%s = %s", col, value[i]))
+							}
+						}
+					}
+				}
+				fmt.Printf("UPDATE %s SET %s WHERE %s LIMIT 1;\n", table, strings.Join(set, ", "), strings.Join(where, " AND "))
+			}
+		}
+	} else {
+		for odd, value := range values {
+			if odd%2 == 0 {
+				where = []string{}
+				set = []string{}
+				for i, v := range value {
+					set = append(set, fmt.Sprintf("@%d = %s", i, v))
+				}
+			} else {
+				for i, v := range value {
+					if v == "NULL" {
+						where = append(where, fmt.Sprintf("@%d IS NULL", i))
+					} else {
+						where = append(where, fmt.Sprintf("@%d = %s", i, v))
+					}
+				}
+				fmt.Printf("-- UPDATE %s SET %s WHERE %s  LIMIT 1;\n", table, strings.Join(set, ", "), strings.Join(where, " AND "))
+			}
+		}
+	}
+}
+
+// UpdateStat ...
+func UpdateStat(event *replication.BinlogEvent) {
+	table := RowEventTable(event)
+	if TableStats[table] != nil {
+		TableStats[table]["update"]++
+	} else {
+		TableStats[table] = map[string]int64{"update": 1}
+	}
+}
+
+// UpdateLua ...
+func UpdateLua(event *replication.BinlogEvent) {
+	if common.Config.Rebuild.LuaScript == "" || event == nil {
+		return
+	}
+
+	table := RowEventTable(event)
+	ev := event.Event.(*replication.RowsEvent)
+	values := BuildValues(ev)
+
+	// lua function
+	f := lua.P{
+		Fn:      Lua.GetGlobal("UpdateRewrite"),
+		NRet:    0,
+		Protect: true,
+	}
+	// lua value
+	v := lua.LString(table)
+	var where, set []string
+	for odd, value := range values {
+		if odd%2 == 0 {
+			where = []string{}
+			set = []string{}
+			for _, v := range value {
+				where = append(where, v)
+			}
+		} else {
+			for _, v := range value {
+				set = append(set, v)
+			}
+
+			LuaStringList("GoValuesWhere", where)
+			LuaStringList("GoValuesSet", set)
+
+			if err := Lua.CallByParam(f, v); err != nil {
+				common.Log.Error(err.Error())
+				return
+			}
+		}
+	}
+}

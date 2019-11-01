@@ -1,0 +1,85 @@
+/*
+ * Copyright(c)  2019 Lianjia, Inc.  All Rights Reserved
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package common
+
+import (
+	"bufio"
+	"bytes"
+	"fmt"
+	"io/ioutil"
+	"os"
+	"path/filepath"
+)
+
+// GoldenDiff 从 gofmt 学来的测试方法
+// https://medium.com/soon-london/testing-with-golden-files-in-go-7fccc71c43d3
+func GoldenDiff(f func(), name string, update *bool) error {
+	var b bytes.Buffer
+	w := bufio.NewWriter(&b)
+	str := captureOutput(f)
+	_, err := w.WriteString(str)
+	if err != nil {
+		Log.Warning(err.Error())
+	}
+	err = w.Flush()
+	if err != nil {
+		Log.Warning(err.Error())
+	}
+
+	gp := filepath.Join("fixture", name+".golden")
+	if *update {
+		if err = ioutil.WriteFile(gp, b.Bytes(), 0644); err != nil {
+			err = fmt.Errorf("%s failed to update golden file: %s", name, err)
+			return err
+		}
+	}
+	g, err := ioutil.ReadFile(gp)
+	if err != nil {
+		err = fmt.Errorf("%s failed reading .golden: %s", name, err)
+	}
+	if !bytes.Equal(b.Bytes(), g) {
+		err = fmt.Errorf("%s does not match .golden file", name)
+	}
+	return err
+}
+
+// captureOutput 获取函数标准输出
+func captureOutput(f func()) string {
+	// keep backup of the real stdout
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	// copy the output in a separate goroutine so printing can't block indefinitely
+	outC := make(chan string)
+	go func() {
+		buf, err := ioutil.ReadAll(r)
+		if err != nil {
+			panic(err)
+		}
+		outC <- string(buf)
+	}()
+
+	// execute function
+	f()
+
+	// back to normal state
+	if err := w.Close(); err != nil {
+		panic(err)
+	}
+	os.Stdout = oldStdout // restoring the real stdout
+	out := <-outC
+	os.Stdout = oldStdout
+	return out
+}

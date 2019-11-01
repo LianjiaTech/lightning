@@ -1,0 +1,5 @@
+lightning -plugin support following type
+  sql(default): parse ROW format binlog into SQL.
+  flashback: generate flashback query from ROW format binlog
+  stat: statistic ROW format binlog table update|insert|delete query count
+  lua: self define lua scripts

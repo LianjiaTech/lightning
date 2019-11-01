@@ -1,0 +1,10 @@
+release/
+
+lightning
+
+VERSION
+version.go
+coverage.data
+coverage.html
+coverage.txt
+*.log
