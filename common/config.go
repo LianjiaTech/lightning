@@ -29,7 +29,7 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/juju/errors"
 	pingcap "github.com/pingcap/parser/mysql"
-	"gopkg.in/yaml.v2"
+	yaml "gopkg.in/yaml.v2"
 )
 
 // GlobalConfig global config
@@ -259,7 +259,7 @@ func ParseConfig() {
 	filterStopPosition := flag.Int64("stop-position", 0, "binlog stop-position")
 	filterStartDatetime := flag.String("start-datetime", "", "binlog filter start-datetime")
 	filterStopDatetime := flag.String("stop-datetime", "", "binlog filter stop-datetime")
-	filterTables := flag.String("tables", "", "binlog filter tables")
+	filterTables := flag.String("tables", "", "binlog filter tables. eg. -tables db1.tb1,db1.tb2,db2.%")
 	filterIgnoreTables := flag.String("ignore-tables", "", "binlog filter ignore tables")
 	filterEventTypes := flag.String("event-types", "", "binlog filter event types")
 

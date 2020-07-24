@@ -100,7 +100,7 @@ lightning 使用 YAML 格式的配置文件。使用 `-config` 参数指定配�
 * 欢迎通过 Github Issues 提交问题报告与建议
 * QQ 群： 573877257
 
-![QQ](http://github.com/LianjiaTech/lightning/raw/master/doc/qq_group.png)
+![QQ](https://github.com/LianjiaTech/lightning/raw/master/doc/qq_group.png)
 
 ## License
 
