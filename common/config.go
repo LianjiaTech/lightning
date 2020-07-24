@@ -267,7 +267,7 @@ func ParseConfig() {
 	rebuildPlugin := flag.String("plugin", "", "plugin name")
 	rebuildCompleteInsert := flag.Bool("complete-insert", false, "complete column info, like 'INSERT INTO tb (col) VALUES (1)'")
 	rebuildExtendedInsertCount := flag.Int("extended-insert-count", 0, "use multiple-row INSERT syntax that include several VALUES")
-	rebuildReplace := flag.Bool("replace", false, "use REPLACE INTO instead of INSERT INTO.")
+	rebuildReplace := flag.Bool("replace", false, "use REPLACE INTO instead of INSERT INTO, UPDATE")
 	rebuildSleepInterval := flag.String("sleep-interval", "", "execute commands repeatedly with a sleep between")
 	rebuildIgnoreColumns := flag.String("ignore-columns", "", "query rebuild ignore columns")
 	rebuildLuaScript := flag.String("lua-script", "", "lua plugin script file")

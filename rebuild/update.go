@@ -46,10 +46,26 @@ func UpdateQuery(event *replication.BinlogEvent) {
 	ev := event.Event.(*replication.RowsEvent)
 	values := BuildValues(ev)
 
+	if common.Config.Rebuild.Replace {
+		var insertValues [][]string
+		for odd, value := range values {
+			if odd%2 == 1 {
+				insertValues = append(insertValues, value)
+			}
+		}
+		insertQuery(table, insertValues)
+	} else {
+		updateQuery(table, values)
+	}
+}
+
+func updateQuery(table string, values [][]string) {
+
 	var where []string
 	var set []string
 
 	if ok := PrimaryKeys[table]; ok != nil {
+		// 0 是 where 条件， 1 是 set 值
 		for odd, value := range values {
 			if odd%2 == 0 {
 				where = []string{}
@@ -114,6 +130,20 @@ func UpdateRollbackQuery(event *replication.BinlogEvent) {
 	ev := event.Event.(*replication.RowsEvent)
 	values := BuildValues(ev)
 
+	if common.Config.Rebuild.Replace {
+		var insertValues [][]string
+		for odd, value := range values {
+			if odd%2 == 0 {
+				insertValues = append(insertValues, value)
+			}
+		}
+		insertQuery(table, insertValues)
+	} else {
+		updateRollbackQuery(table, values)
+	}
+}
+
+func updateRollbackQuery(table string, values [][]string) {
 	var where []string
 	var set []string
 

@@ -45,6 +45,10 @@ func DeleteQuery(event *replication.BinlogEvent) {
 	ev := event.Event.(*replication.RowsEvent)
 	values := BuildValues(ev)
 
+	deleteQuery(table, values)
+}
+
+func deleteQuery(table string, values [][]string) {
 	if ok := PrimaryKeys[table]; ok != nil {
 		for _, value := range values {
 			var where []string
@@ -83,62 +87,7 @@ func DeleteRollbackQuery(event *replication.BinlogEvent) {
 	ev := event.Event.(*replication.RowsEvent)
 	values := BuildValues(ev)
 
-	var insertPrefix string
-	if common.Config.Rebuild.Replace {
-		insertPrefix = "REPLACE INTO"
-	} else {
-		insertPrefix = "INSERT INTO"
-	}
-
-	colStr := ""
-	for row, v := range values {
-		valStr := ""
-		if common.Config.Rebuild.CompleteInsert {
-			if ok := Columns[table]; ok != nil {
-				if len(common.Config.Rebuild.IgnoreColumns) > 0 {
-					var truncValues, truncColumns []string
-					for i, col := range Columns[table] {
-						ignore := false
-						for _, c := range common.Config.Rebuild.IgnoreColumns {
-							if c == strings.Trim(col, "`") {
-								ignore = true
-							}
-						}
-						if !ignore {
-							truncColumns = append(truncColumns, col)
-							truncValues = append(truncValues, v[i])
-						}
-					}
-					colStr = fmt.Sprintf("(%s)", strings.Join(truncColumns, ", "))
-					valStr = strings.Join(truncValues, ", ")
-				} else {
-					colStr = fmt.Sprintf("(%s)", strings.Join(Columns[table], ", "))
-					valStr = strings.Join(v, ", ")
-				}
-			} else {
-				valStr = strings.Join(v, ", ")
-			}
-		} else {
-			valStr = strings.Join(v, ", ")
-		}
-
-		if common.Config.Rebuild.ExtendedInsertCount > 1 {
-			InsertValuesMerge = append(InsertValuesMerge, fmt.Sprintf("(%s)", valStr))
-		} else {
-			fmt.Printf("%s %s %s VALUES (%s);\n", insertPrefix, table, colStr, valStr)
-		}
-
-		// INSERT VALUES merge
-		if row != 0 && common.Config.Rebuild.ExtendedInsertCount > 1 &&
-			(row+1)%common.Config.Rebuild.ExtendedInsertCount == 0 {
-			fmt.Printf("%s %s %s VALUES %s;\n", insertPrefix, table, colStr, strings.Join(InsertValuesMerge, ", "))
-			InsertValuesMerge = []string{}
-		}
-	}
-	if len(InsertValuesMerge) > 0 {
-		fmt.Printf("%s %s %s VALUES %s;\n", insertPrefix, table, colStr, strings.Join(InsertValuesMerge, ", "))
-		InsertValuesMerge = []string{}
-	}
+	insertQuery(table, values)
 }
 
 // DeleteStat ...

@@ -44,7 +44,10 @@ func InsertQuery(event *replication.BinlogEvent) {
 	table := RowEventTable(event)
 	ev := event.Event.(*replication.RowsEvent)
 	values := BuildValues(ev)
+	insertQuery(table, values)
+}
 
+func insertQuery(table string, values [][]string) {
 	var insertPrefix string
 	if common.Config.Rebuild.Replace {
 		insertPrefix = "REPLACE INTO"
@@ -109,36 +112,7 @@ func InsertRollbackQuery(event *replication.BinlogEvent) {
 	ev := event.Event.(*replication.RowsEvent)
 	values := BuildValues(ev)
 
-	if ok := PrimaryKeys[table]; ok != nil {
-		for _, value := range values {
-			var where []string
-			for _, col := range PrimaryKeys[table] {
-				for i, c := range Columns[table] {
-					if c == col {
-						if value[i] == "NULL" {
-							where = append(where, fmt.Sprintf("%s IS NULL", col))
-						} else {
-							where = append(where, fmt.Sprintf("%s = %s", col, value[i]))
-						}
-					}
-				}
-			}
-			fmt.Printf("DELETE FROM %s WHERE %s LIMIT 1;\n", table, strings.Join(where, " AND "))
-		}
-	} else {
-		for _, value := range values {
-			var where []string
-			for i, v := range value {
-				col := fmt.Sprintf("@%d", i)
-				if v == "NULL" {
-					where = append(where, fmt.Sprintf("%s IS NULL", col))
-				} else {
-					where = append(where, fmt.Sprintf("%s = %s", col, v))
-				}
-			}
-			fmt.Printf("-- DELETE FROM %s WHERE %s LIMIT 1;\n", table, strings.Join(where, " AND "))
-		}
-	}
+	deleteQuery(table, values)
 }
 
 // InsertStat ...
