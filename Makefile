@@ -27,7 +27,7 @@ build:
 release: build
 	@echo "$(CGREEN)Cross platform building for release ...$(CEND)"
 	@mkdir -p release
-	@for GOOS in darwin linux windows; do \
+	@for GOOS in darwin linux; do \
 		for GOARCH in amd64; do \
 			for d in $$(go list -f '{{if (eq .Name "main")}}{{.ImportPath}}{{end}}' ./...); do \
 				b=$$(basename $${d}) ; \

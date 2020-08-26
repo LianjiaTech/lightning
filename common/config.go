@@ -40,7 +40,7 @@ type GlobalConfig struct {
 	// 日志输出位置，默认日志输出到控制台
 	// 目前只支持['console', 'file']两种形式，如非console形式这里需要指定文件的路径，可以是相对路径
 	LogOutput      string         `yaml:"log-output"`
-	Demonize       bool           `yaml:"demonize"`
+	Daemon         bool           `yaml:"daemon"`
 	Charset        string         `yaml:"charset"`
 	HexString      bool           `yaml:"hex-string"`      // string, varchar 等数据是否使用 hex 转义，防止数据转换
 	CPU            int            `yaml:"cpu"`             // CPU core limit
@@ -234,7 +234,7 @@ func ParseConfig() {
 	globalCPU := flag.Int("cpu", 0, "cpu cores limit")
 	globalVerbose := flag.Bool("verbose", false, "verbose mode, more info will print")
 	globalVerboseVerbose := flag.Bool("vv", false, "verbose verbose mode, more and more info will print")
-	globalDemonize := flag.Bool("demonize", false, "replication run as demonize")
+	globalDaemon := flag.Bool("daemon", false, "replication run as daemon")
 	globalHexString := flag.Bool("hex-string", false, "convert string to hex format")
 
 	// MySQL section config
@@ -344,8 +344,8 @@ func ParseConfig() {
 	if *globalVerboseVerbose {
 		Config.Global.VerboseVerbose = *globalVerboseVerbose
 	}
-	if *globalDemonize {
-		Config.Global.Demonize = *globalDemonize
+	if *globalDaemon {
+		Config.Global.Daemon = *globalDaemon
 	}
 	if *globalHexString {
 		Config.Global.HexString = *globalHexString
@@ -425,7 +425,7 @@ func ParseConfig() {
 	if *filterStopDatetime != "" {
 		Config.Filters.StopDatetime = *filterStopDatetime
 	}
-	if Config.Filters.StopDatetime == "" && Config.Global.Demonize == false {
+	if Config.Filters.StopDatetime == "" && Config.Global.Daemon == false {
 		Config.Filters.StopDatetime = time.Now().Format(layout)
 	}
 

@@ -210,7 +210,7 @@ func BinlogStreamParser() error {
 func getEvent(streamer *replication.BinlogStreamer, readTimeout time.Duration) (*replication.BinlogEvent, error) {
 	var ctx context.Context
 	var cancel context.CancelFunc
-	if common.Config.Global.Demonize {
+	if common.Config.Global.Daemon {
 		ctx = context.Background()
 	} else {
 		ctx, cancel = context.WithTimeout(context.Background(), readTimeout)
