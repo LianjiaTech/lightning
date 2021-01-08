@@ -33,6 +33,8 @@ rebuild:
     - id
   # lua 插件脚本位置
   lua-script: plugin/demo.flashback.lua
+  # 对表名进行简写，如：`db`.`tb` -> `tb`，可以用在测试库做预恢复的场景
+  without-db-name: false
 ```
 
 ## 示例
