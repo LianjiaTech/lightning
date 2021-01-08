@@ -1,7 +1,7 @@
 global:
   log-level: 3
   log-output: lightning.log
-  demonize: false
+  daemon: false
   charset: utf8mb4
   hex-string: false
   cpu: 0
@@ -38,3 +38,4 @@ rebuild:
   replace: false
   sleep-interval: 0s
   lua-script: ""
+  without-db-name: false

@@ -64,6 +64,9 @@ func updateQuery(table string, values [][]string) {
 	var where []string
 	var set []string
 
+	// for common.Config.Rebuild.WithoutDBName
+	shortTableName := onlyTable(table)
+
 	if ok := PrimaryKeys[table]; ok != nil {
 		// 0 是 where 条件， 1 是 set 值
 		for odd, value := range values {
@@ -99,7 +102,12 @@ func updateQuery(table string, values [][]string) {
 						set = append(set, fmt.Sprintf("%s = %s", c, value[i]))
 					}
 				}
-				fmt.Printf("UPDATE %s SET %s WHERE %s LIMIT 1;\n", table, strings.Join(set, ", "), strings.Join(where, " AND "))
+
+				if common.Config.Rebuild.WithoutDBName {
+					fmt.Printf("UPDATE %s SET %s WHERE %s LIMIT 1;\n", shortTableName, strings.Join(set, ", "), strings.Join(where, " AND "))
+				} else {
+					fmt.Printf("UPDATE %s SET %s WHERE %s LIMIT 1;\n", table, strings.Join(set, ", "), strings.Join(where, " AND "))
+				}
 			}
 		}
 	} else {
@@ -118,7 +126,11 @@ func updateQuery(table string, values [][]string) {
 				for i, v := range value {
 					set = append(set, fmt.Sprintf("@%d = %s", i, v))
 				}
-				fmt.Printf("-- UPDATE %s SET %s WHERE %s LIMIT 1;\n", table, strings.Join(set, ", "), strings.Join(where, " AND "))
+				if common.Config.Rebuild.WithoutDBName {
+					fmt.Printf("-- UPDATE %s SET %s WHERE %s LIMIT 1;\n", shortTableName, strings.Join(set, ", "), strings.Join(where, " AND "))
+				} else {
+					fmt.Printf("-- UPDATE %s SET %s WHERE %s LIMIT 1;\n", table, strings.Join(set, ", "), strings.Join(where, " AND "))
+				}
 			}
 		}
 	}

@@ -14,6 +14,7 @@
 package rebuild
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/LianjiaTech/lightning/common"
@@ -45,4 +46,20 @@ func TestLoadSchemaFromMySQL(t *testing.T) {
 	pretty.Println(err, Schemas)
 
 	common.Config.MySQL.MasterInfo = master
+}
+
+func TestOnlyTable(t *testing.T) {
+	tables := []string{
+		"`db`.`tb`",
+		"tb",
+	}
+
+	err := common.GoldenDiff(func() {
+		for _, table := range tables {
+			fmt.Println(onlyTable(table))
+		}
+	}, t.Name(), update)
+	if nil != err {
+		t.Fatal(err)
+	}
 }

@@ -49,6 +49,10 @@ func DeleteQuery(event *replication.BinlogEvent) {
 }
 
 func deleteQuery(table string, values [][]string) {
+
+	// for common.Config.Rebuild.WithoutDBName
+	shortTableName := onlyTable(table)
+
 	if ok := PrimaryKeys[table]; ok != nil {
 		for _, value := range values {
 			var where []string
@@ -63,7 +67,12 @@ func deleteQuery(table string, values [][]string) {
 					}
 				}
 			}
-			fmt.Printf("DELETE FROM %s WHERE %s LIMIT 1;\n", table, strings.Join(where, " AND "))
+
+			if common.Config.Rebuild.WithoutDBName {
+				fmt.Printf("DELETE FROM %s WHERE %s LIMIT 1;\n", shortTableName, strings.Join(where, " AND "))
+			} else {
+				fmt.Printf("DELETE FROM %s WHERE %s LIMIT 1;\n", table, strings.Join(where, " AND "))
+			}
 		}
 	} else {
 		for _, value := range values {
@@ -76,7 +85,11 @@ func deleteQuery(table string, values [][]string) {
 					where = append(where, fmt.Sprintf("%s = %s", col, v))
 				}
 			}
-			fmt.Printf("-- DELETE FROM %s WHERE %s LIMIT 1;\n", table, strings.Join(where, " AND "))
+			if common.Config.Rebuild.WithoutDBName {
+				fmt.Printf("-- DELETE FROM %s WHERE %s LIMIT 1;\n", shortTableName, strings.Join(where, " AND "))
+			} else {
+				fmt.Printf("-- DELETE FROM %s WHERE %s LIMIT 1;\n", table, strings.Join(where, " AND "))
+			}
 		}
 	}
 }

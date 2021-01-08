@@ -258,3 +258,12 @@ func buildFakeTable(db *sql.DB, table string) string {
 	}
 	return fmt.Sprintf("CREATE TABLE %s (%s %s);", table, strings.Join(columns, ","), fmt.Sprintf(", PRIMARY KEY (%s)", strings.Join(primary, ",")))
 }
+
+func onlyTable(table string) string {
+	tup := strings.Split(strings.Trim(table, "`"), "`.`")
+	length := len(tup)
+	if length <= 0 {
+		return ""
+	}
+	return fmt.Sprint("`", tup[length-1], "`")
+}

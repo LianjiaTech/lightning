@@ -114,11 +114,13 @@ type Rebuild struct {
 	SleepInterval       string        `yaml:"sleep-interval"`
 	SleepDuration       time.Duration `yaml:"-"`
 	LuaScript           string        `yaml:"lua-script"`
+	WithoutDBName       bool          `yaml:"without-db-name"`
 }
 
 var rConfig = Rebuild{
 	Plugin:        "sql",
 	SleepInterval: "0s",
+	WithoutDBName: false,
 }
 
 // Configuration config sections
@@ -271,6 +273,7 @@ func ParseConfig() {
 	rebuildSleepInterval := flag.String("sleep-interval", "", "execute commands repeatedly with a sleep between")
 	rebuildIgnoreColumns := flag.String("ignore-columns", "", "query rebuild ignore columns")
 	rebuildLuaScript := flag.String("lua-script", "", "lua plugin script file")
+	rebuildWithoutDBName := flag.Bool("without-db-name", false, "insert/delete/update query without database name, only table name")
 
 	// master.info config
 	masterHost := flag.String("master-host", "", "master.info master_host")
@@ -509,6 +512,9 @@ func ParseConfig() {
 	}
 	if *rebuildLuaScript != "" {
 		Config.Rebuild.LuaScript = *rebuildLuaScript
+	}
+	if *rebuildWithoutDBName {
+		Config.Rebuild.WithoutDBName = *rebuildWithoutDBName
 	}
 
 	LoadMasterInfo()

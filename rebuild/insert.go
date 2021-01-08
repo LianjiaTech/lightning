@@ -55,6 +55,9 @@ func insertQuery(table string, values [][]string) {
 		insertPrefix = "INSERT INTO"
 	}
 
+	// for common.Config.Rebuild.WithoutDBName
+	shortTableName := onlyTable(table)
+
 	colStr := ""
 	for row, v := range values {
 		valStr := ""
@@ -90,18 +93,30 @@ func insertQuery(table string, values [][]string) {
 		if common.Config.Rebuild.ExtendedInsertCount > 1 {
 			InsertValuesMerge = append(InsertValuesMerge, fmt.Sprintf("(%s)", valStr))
 		} else {
-			fmt.Printf("%s %s %s VALUES (%s);\n", insertPrefix, table, colStr, valStr)
+			if common.Config.Rebuild.WithoutDBName {
+				fmt.Printf("%s %s %s VALUES (%s);\n", insertPrefix, shortTableName, colStr, valStr)
+			} else {
+				fmt.Printf("%s %s %s VALUES (%s);\n", insertPrefix, table, colStr, valStr)
+			}
 		}
 
 		// INSERT VALUES merge
 		if row != 0 && common.Config.Rebuild.ExtendedInsertCount > 1 &&
 			(row+1)%common.Config.Rebuild.ExtendedInsertCount == 0 {
-			fmt.Printf("%s %s %s VALUES %s;\n", insertPrefix, table, colStr, strings.Join(InsertValuesMerge, ", "))
+			if common.Config.Rebuild.WithoutDBName {
+				fmt.Printf("%s %s %s VALUES %s;\n", insertPrefix, shortTableName, colStr, strings.Join(InsertValuesMerge, ", "))
+			} else {
+				fmt.Printf("%s %s %s VALUES %s;\n", insertPrefix, table, colStr, strings.Join(InsertValuesMerge, ", "))
+			}
 			InsertValuesMerge = []string{}
 		}
 	}
 	if len(InsertValuesMerge) > 0 {
-		fmt.Printf("%s %s %s VALUES %s;\n", insertPrefix, table, colStr, strings.Join(InsertValuesMerge, ", "))
+		if common.Config.Rebuild.WithoutDBName {
+			fmt.Printf("%s %s %s VALUES %s;\n", insertPrefix, shortTableName, colStr, strings.Join(InsertValuesMerge, ", "))
+		} else {
+			fmt.Printf("%s %s %s VALUES %s;\n", insertPrefix, table, colStr, strings.Join(InsertValuesMerge, ", "))
+		}
 		InsertValuesMerge = []string{}
 	}
 }
