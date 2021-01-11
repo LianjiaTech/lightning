@@ -115,7 +115,7 @@ docker:
 
 .PHONY: docker-connect
 docker-connect:
-	@docker exec -it lightning-mysql mysql --user=root --password='******' --host "127.0.0.1" test
+	@docker exec -it lightning-mysql env LANG=C.UTF-8 mysql --user=root --password='******' --host "127.0.0.1" test
 
 # attach docker container with bash interactive mode
 .PHONY: docker-it
