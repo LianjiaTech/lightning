@@ -106,7 +106,7 @@ var fConfig = Filters{
 
 // Rebuild rebuild plugins
 type Rebuild struct {
-	Plugin              string        `yaml:"plugin"` // Plugin name: sql, flashback, stat, lua
+	Plugin              string        `yaml:"plugin"` // Plugin name: sql, flashback, stat, lua, find
 	CompleteInsert      bool          `yaml:"complete-insert"`
 	ExtendedInsertCount int           `yaml:"extended-insert-count"`
 	IgnoreColumns       []string      `yaml:"ignore-columns"`
@@ -477,7 +477,7 @@ func ParseConfig() {
 	switch Config.Rebuild.Plugin {
 	case "":
 		Config.Rebuild.Plugin = "sql"
-	case "lua", "sql", "flashback", "stat":
+	case "lua", "sql", "flashback", "stat", "find":
 	default:
 		ListPlugin()
 		os.Exit(1)
@@ -713,6 +713,7 @@ func ListPlugin() {
 	fmt.Println("  flashback: generate flashback query from ROW format binlog")
 	fmt.Println("  stat: statistic ROW format binlog table update|insert|delete query count")
 	fmt.Println("  lua: self define lua scripts")
+	fmt.Println("  find: find binlog file name by event time")
 }
 
 // TimeOffset timezone offset seconds

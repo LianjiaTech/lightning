@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sort"
 	"time"
 
 	"github.com/LianjiaTech/lightning/common"
@@ -42,7 +43,19 @@ const (
 // BinlogParser ...
 func BinlogParser() {
 	if len(common.Config.MySQL.BinlogFile) > 0 {
-		err := BinlogFileParser(common.Config.MySQL.BinlogFile)
+		// check each binlog file start time for event time filter
+		err := CheckBinlogFileTime(common.Config.MySQL.BinlogFile)
+		if err != nil {
+			fmt.Println(err.Error())
+			return
+		}
+		if common.Config.Rebuild.Plugin == "find" {
+			fmt.Println(common.Config.MySQL.BinlogFile)
+			return
+		}
+
+		// parse each binlog file
+		err = BinlogFileParser(common.Config.MySQL.BinlogFile)
 		if err != nil {
 			fmt.Println(err.Error())
 		}
@@ -74,6 +87,72 @@ func CheckBinlogFormat(dsn string) string {
 		res.Scan(&format)
 	}
 	return format
+}
+
+// CheckBinlogFileTime ...
+func CheckBinlogFileTime(files []string) error {
+	var err error
+	var filteredBinlogs []string
+
+	// no binlog, or only one, by pass check
+	if len(files) < 2 {
+		return err
+	}
+
+	// if no time filter, no need to check binlog files time
+	if common.Config.Filters.StartDatetime == "" &&
+		common.Config.Filters.StopDatetime == "" {
+		return err
+	}
+
+	// file sort by index
+	sort.Strings(common.Config.MySQL.BinlogFile)
+
+	// each file only check first event
+	for idx, filename := range files {
+		do := true
+		fd, err := os.Open(filename)
+		if err != nil {
+			return err
+		}
+
+		bufFileHeader := make([]byte, FileHeaderLength)
+		if _, err := io.ReadFull(fd, bufFileHeader); err != nil {
+			return errors.Trace(err)
+		}
+		if !CheckBinlogFileHeader(bufFileHeader) {
+			err = errors.Errorf("invalid file type, not binlog")
+			return err
+		}
+
+		p := replication.NewBinlogParser()
+		event, err := FileNextEvent(p, fd)
+		if err == io.EOF {
+			continue
+		}
+		if err != nil {
+			return errors.Trace(err)
+		}
+
+		if !FilterStartDatetime(event) {
+			do = false
+		}
+		if !FilterStopDatetime(event) {
+			if len(filteredBinlogs) == 0 && idx > 0 {
+				filteredBinlogs = append(filteredBinlogs, files[idx-1])
+			}
+			do = false
+		}
+		fd.Close()
+		if do {
+			if len(filteredBinlogs) == 0 && idx > 0 {
+				filteredBinlogs = append(filteredBinlogs, files[idx-1])
+			}
+			filteredBinlogs = append(filteredBinlogs, filename)
+		}
+	}
+	common.Config.MySQL.BinlogFile = filteredBinlogs
+	return err
 }
 
 // BinlogFileParser parser binary log file

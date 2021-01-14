@@ -35,3 +35,10 @@ verbose 模式中可以看到很多 binlog event 的信息，其中 TransactionS
 ```bash
 lightning -no-defaults -verbose -schema-file test/schema.sql test/binlog.000002  | grep "DEBUG" | grep "TransactionSizeBytes\|ExecutionTime"
 ```
+
+## 查找指定时间的 event 在哪个 binlog 文件？
+
+```
+# 要注意命令行支持的最大长度，直接 $(ls mysql-bin.0*) 可能导致参数过长无法获取结果
+lightning -binlog-file "$(ls mysql-bin.0*)" -start-datetime "2021-01-13 07:00:00" -stop-datetime "2021-01-13 18:00:00" -plugin find
+```
