@@ -3,3 +3,4 @@ lightning -plugin support following type
   flashback: generate flashback query from ROW format binlog
   stat: statistic ROW format binlog table update|insert|delete query count
   lua: self define lua scripts
+  find: find binlog file name by event time
