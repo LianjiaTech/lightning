@@ -36,7 +36,7 @@ Lua
 
 ## 第三方包引用
 
-* [go-mysql](https://github.com/siddontang/go-mysql)
+* [go-mysql](https://github.com/go-mysql-org/go-mysql)
 * [pingcap/parser](https://github.com/pingcap/parser)
 * [gopher-lua](https://github.com/yuin/gopher-lua)
 

@@ -69,23 +69,6 @@ cover: test
 	else \
 		{print "$(CYELLOW)"$$0"%$(CEND)"}}'
 
-
-# Update tidb vendor
-.PHONY: tidb
-tidb:
-	@echo "$(CGREEN)Update tidb deps ...$(CEND)"
-	govendor fetch -v github.com/pingcap/tidb/...
-
-# make pingcap parser
-.PHONY: pingcap-parser
-pingcap-parser: tidb
-	@echo "$(CGREEN)Update pingcap parser deps ...$(CEND)"
-	govendor fetch -v github.com/pingcap/parser/...
-
-# Update all vendor
-.PHONY: vendor
-vendor: pingcap-parser
-
 .PHONY: docker
 docker:
 	@echo "$(CGREEN)Build mysql test environment ...$(CEND)"

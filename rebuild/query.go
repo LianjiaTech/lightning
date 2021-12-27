@@ -18,7 +18,7 @@ import (
 	"strings"
 
 	"github.com/LianjiaTech/lightning/common"
-	"github.com/siddontang/go-mysql/replication"
+	"github.com/go-mysql-org/go-mysql/replication"
 	lua "github.com/yuin/gopher-lua"
 
 	"github.com/pingcap/parser"

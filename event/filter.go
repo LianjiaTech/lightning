@@ -21,8 +21,8 @@ import (
 	"github.com/LianjiaTech/lightning/common"
 	"github.com/LianjiaTech/lightning/rebuild"
 
+	"github.com/go-mysql-org/go-mysql/replication"
 	uuid "github.com/satori/go.uuid"
-	"github.com/siddontang/go-mysql/replication"
 )
 
 var FollowGTID bool

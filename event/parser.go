@@ -27,10 +27,10 @@ import (
 	"github.com/LianjiaTech/lightning/rebuild"
 
 	// database/sql
+	"github.com/go-mysql-org/go-mysql/mysql"
+	"github.com/go-mysql-org/go-mysql/replication"
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/juju/errors"
-	"github.com/siddontang/go-mysql/mysql"
-	"github.com/siddontang/go-mysql/replication"
 )
 
 // https://dev.mysql.com/doc/internals/en/binary-log-structure-and-contents.html

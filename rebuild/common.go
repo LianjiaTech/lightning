@@ -17,17 +17,18 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+
 	"github.com/LianjiaTech/lightning/common"
 
 	"github.com/BixData/gluabit32"
 	"github.com/BixData/gluasocket"
+	"github.com/go-mysql-org/go-mysql/mysql"
+	"github.com/go-mysql-org/go-mysql/replication"
 	"github.com/montanaflynn/stats"
-	"github.com/satori/go.uuid"
-	"github.com/siddontang/go-mysql/mysql"
-	"github.com/siddontang/go-mysql/replication"
-	"github.com/yuin/gopher-lua"
+	uuid "github.com/satori/go.uuid"
+	lua "github.com/yuin/gopher-lua"
 	"github.com/zhu327/gluadb"
-	"layeh.com/gopher-lfs"
+	lfs "layeh.com/gopher-lfs"
 )
 
 // for -plugin stat
