@@ -172,6 +172,7 @@ func BinlogFileParser(files []string) error {
 		}
 
 		p := replication.NewBinlogParser()
+		p.SetUseDecimal(true) // support Decimal type
 		for {
 			event, err := FileNextEvent(p, fd)
 			if err == io.EOF {
@@ -249,7 +250,7 @@ func BinlogStreamParser() error {
 
 		ParseTime:               false,                         // parse mysql datetime/time as string
 		TimestampStringLocation: common.Config.Global.Location, // If ParseTime is false, convert TIMESTAMP into this specified timezone.
-		UseDecimal:              false,                         // parse decimal type as float64
+		UseDecimal:              true,                          // support Decimal type
 	}
 	syncer := replication.NewBinlogSyncer(changeMaster)
 	defer syncer.Close()
