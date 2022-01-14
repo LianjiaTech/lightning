@@ -84,8 +84,8 @@ type Filters struct {
 	EventType      []string `yaml:"event-types"`   // insert, update, delete
 	ThreadID       int      `yaml:"thread-id"`
 	ServerID       int      `yaml:"server-id"`
-	StartPosition  int64    `yaml:"start-position"`
-	StopPosition   int64    `yaml:"stop-position"`
+	StartPosition  uint32   `yaml:"start-position"`
+	StopPosition   uint32   `yaml:"stop-position"`
 	StartDatetime  string   `yaml:"start-datetime"`
 	StopDatetime   string   `yaml:"stop-datetime"`
 	IncludeGTIDSet string   `yaml:"include-gtid-set"`
@@ -257,8 +257,8 @@ func ParseConfig() {
 	filterServerID := flag.Int("server-id", 0, "binlog filter server-id")
 	filterIncludeGTID := flag.String("include-gtids", "", "like mysqlbinlog include-gtids")
 	filterExcludeGTID := flag.String("exclude-gtids", "", "like mysqlbinlog exclude-gtids")
-	filterStartPosition := flag.Int64("start-position", 0, "binlog start-position")
-	filterStopPosition := flag.Int64("stop-position", 0, "binlog stop-position")
+	filterStartPosition := flag.Uint("start-position", 0, "binlog start-position")
+	filterStopPosition := flag.Uint("stop-position", 0, "binlog stop-position")
 	filterStartDatetime := flag.String("start-datetime", "", "binlog filter start-datetime")
 	filterStopDatetime := flag.String("stop-datetime", "", "binlog filter stop-datetime")
 	filterTables := flag.String("tables", "", "binlog filter tables. eg. -tables db1.tb1,db1.tb2,db2.%")
@@ -443,10 +443,20 @@ func ParseConfig() {
 	}
 	VerboseVerbose("-- [DEBUG] Config.Filters.StopTimestamp: %d", Config.Filters.StopTimestamp)
 	if *filterStartPosition > 0 {
-		Config.Filters.StartPosition = *filterStartPosition
+		if *filterStartPosition >= 1<<32 {
+			fmt.Println("binlog --start-position overflow, should be uint32")
+			os.Exit(1)
+		} else {
+			Config.Filters.StartPosition = uint32(*filterStartPosition)
+		}
 	}
 	if *filterStopPosition > 0 {
-		Config.Filters.StopPosition = *filterStopPosition
+		if *filterStopPosition >= 1<<32 {
+			fmt.Println("binlog --stop-position overflow, should be uint32")
+			os.Exit(1)
+		} else {
+			Config.Filters.StopPosition = uint32(*filterStopPosition)
+		}
 	}
 	if *filterTables != "" {
 		Config.Filters.Tables = strings.Split(*filterTables, ",")

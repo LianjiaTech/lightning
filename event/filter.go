@@ -28,6 +28,7 @@ import (
 var FollowGTID bool
 var FollowThreadID bool
 var Ending bool
+var Starting bool
 
 // FilterThreadID ...
 func FilterThreadID(event *replication.BinlogEvent) bool {
@@ -164,11 +165,12 @@ func FilterExcludeGTIDs(event *replication.BinlogEvent) bool {
 // FilterStartPos ...
 func FilterStartPos(event *replication.BinlogEvent) bool {
 	var do bool
-	if common.Config.Filters.StartPosition == 0 {
+	if common.Config.Filters.StartPosition == 0 || Starting {
 		do = true
 	}
-	if event.Header.LogPos >= uint32(common.Config.Filters.StartPosition) {
+	if event.Header.LogPos >= common.Config.Filters.StartPosition {
 		do = true
+		Starting = true
 	}
 	return do
 }
@@ -180,7 +182,7 @@ func FilterStopPos(event *replication.BinlogEvent) bool {
 		do = true
 		return do
 	}
-	if event.Header.LogPos <= uint32(common.Config.Filters.StopPosition) {
+	if event.Header.LogPos <= common.Config.Filters.StopPosition {
 		do = true
 	} else {
 		Ending = true
@@ -200,25 +202,24 @@ func FilterQueryType(event *replication.BinlogEvent) bool {
 		case replication.WRITE_ROWS_EVENTv2, replication.WRITE_ROWS_EVENTv1, replication.WRITE_ROWS_EVENTv0:
 			if strings.ToLower(t) == "insert" {
 				do = true
-				break
 			}
 		case replication.UPDATE_ROWS_EVENTv2, replication.UPDATE_ROWS_EVENTv1, replication.UPDATE_ROWS_EVENTv0:
 			if strings.ToLower(t) == "update" {
 				do = true
-				break
 			}
 		case replication.DELETE_ROWS_EVENTv2, replication.DELETE_ROWS_EVENTv1, replication.DELETE_ROWS_EVENTv0:
 			if strings.ToLower(t) == "delete" {
 				do = true
-				break
 			}
 		case replication.QUERY_EVENT:
 			prefix := strings.Fields(string(event.Event.(*replication.QueryEvent).Query))[0]
 			if strings.ToLower(t) == prefix {
 				do = true
-				break
 			}
 		default:
+		}
+		if do {
+			break
 		}
 	}
 	return do
