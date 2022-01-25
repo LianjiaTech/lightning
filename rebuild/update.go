@@ -35,7 +35,6 @@ func UpdateRebuild(event *replication.BinlogEvent) string {
 	case "lua":
 		UpdateLua(event)
 	default:
-		fmt.Println("InsertRebuild ...")
 	}
 	return ""
 }

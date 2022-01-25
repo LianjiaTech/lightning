@@ -43,7 +43,6 @@ func ExampleBinlogFileValidator() {
 	// CheckBinlogFileEncrypt [253 98 105 110] true
 	// CheckBinlogFileHeader [254 103 105 102] false
 	// CheckBinlogFileEncrypt [254 103 105 102] false
-\
 }
 
 func TestBinlogFileParser(t *testing.T) {

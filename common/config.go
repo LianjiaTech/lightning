@@ -67,11 +67,13 @@ type MySQL struct {
 	SyncDuration                 time.Duration `yaml:"-"`
 	ReadTimeout                  string        `yaml:"read-timeout"`
 	RetryCount                   int           `yaml:"retry-count"`
+	Keyring                      string        `yaml:"keyring"`
 }
 
 var mConfig = MySQL{
 	BinlogFile:   []string{},
 	SchemaFile:   "",
+	Keyring:      "",
 	SyncInterval: "1s",
 	ReadTimeout:  "3s",
 	RetryCount:   100,
@@ -246,6 +248,7 @@ func ParseConfig() {
 	mysqlPassword := flag.String("password", "", "mysql password")
 	mysqlBinlogFile := flag.String("binlog-file", "", "binlog files separate with space, eg. --binlog-file='binlog.000001 binlog.000002'")
 	mysqlSchemaFile := flag.String("schema-file", "", "schema load from file")
+	mysqlKeyring := flag.String("keyring", "", "mysql keyring file path")
 	mysqlMasterInfo := flag.String("master-info", "", "master.info file")
 	mysqlReplicateFromCurrent := flag.Bool("replicate-from-current-position", false, "binlog dump from current `show master status`")
 	mysqlSyncInterval := flag.String("sync-interval", "", "sync master.info interval")
@@ -367,6 +370,9 @@ func ParseConfig() {
 	if *mysqlSchemaFile != "" {
 		Config.MySQL.SchemaFile = *mysqlSchemaFile
 	}
+	if *mysqlKeyring != "" {
+		Config.MySQL.Keyring = *mysqlKeyring
+	}
 	if *mysqlMasterInfo != "" {
 		Config.MySQL.MasterInfo = *mysqlMasterInfo
 	}
@@ -487,7 +493,7 @@ func ParseConfig() {
 	switch Config.Rebuild.Plugin {
 	case "":
 		Config.Rebuild.Plugin = "sql"
-	case "lua", "sql", "flashback", "stat", "find":
+	case "lua", "sql", "flashback", "stat", "find", "decrypt":
 	default:
 		ListPlugin()
 		os.Exit(1)

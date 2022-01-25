@@ -16,6 +16,7 @@ package event
 import (
 	"bytes"
 	"context"
+	"crypto/cipher"
 	"database/sql"
 	"fmt"
 	"io"
@@ -46,11 +47,20 @@ func BinlogParser() {
 		// check each binlog file start time for event time filter
 		err := CheckBinlogFileTime(common.Config.MySQL.BinlogFile)
 		if err != nil {
-			fmt.Println(err.Error())
+			println(err.Error())
 			return
 		}
-		if common.Config.Rebuild.Plugin == "find" {
+		switch common.Config.Rebuild.Plugin {
+		case "find":
 			fmt.Println(common.Config.MySQL.BinlogFile)
+			return
+		case "decrypt":
+			for _, binlog := range common.Config.MySQL.BinlogFile {
+				err = DecryptBinlog(binlog, common.Config.MySQL.Keyring)
+				if err != nil {
+					println(err.Error())
+				}
+			}
 			return
 		}
 
@@ -64,7 +74,7 @@ func BinlogParser() {
 	if common.Config.MySQL.MasterInfo != "" {
 		err := BinlogStreamParser()
 		if err != nil {
-			fmt.Println(err.Error())
+			println(err.Error())
 		}
 	}
 }
@@ -135,9 +145,19 @@ func CheckBinlogFileTime(files []string) error {
 			err = errors.Errorf("invalid file type, not binlog")
 			return err
 		}
+		var stream cipher.Stream
+		if CheckBinlogFileEncrypt(bufFileHeader) {
+			stream, err = initAESCTRStream(filename, common.Config.MySQL.Keyring)
+			if err != nil {
+				return err
+			}
+			fd.Seek(EncryptFileHeaderOffset+FileHeaderLength, 0)
+		} else {
+			stream = nil
+		}
 
 		p := replication.NewBinlogParser()
-		event, err := FileNextEvent(p, fd)
+		event, err := FileNextEvent(p, fd, stream)
 		if err == io.EOF {
 			continue
 		}
@@ -181,11 +201,28 @@ func BinlogFileParser(files []string) error {
 			err = errors.Errorf("invalid file type, not binlog")
 			return err
 		}
+		var stream cipher.Stream
+		if CheckBinlogFileEncrypt(bufFileHeader) {
+			stream, err = initAESCTRStream(filename, common.Config.MySQL.Keyring)
+			if err != nil {
+				return err
+			}
+			fd.Seek(EncryptFileHeaderOffset, 0)
+			if _, err := io.ReadFull(fd, bufFileHeader); err != nil {
+				return errors.Trace(err)
+			}
+			if !CheckBinlogFileHeader(decryptAESCTR(stream, bufFileHeader)) {
+				err = errors.Errorf("invalid file type, not binlog")
+				return err
+			}
+		} else {
+			stream = nil
+		}
 
 		p := replication.NewBinlogParser()
 		p.SetUseDecimal(true) // support Decimal type
 		for {
-			event, err := FileNextEvent(p, fd)
+			event, err := FileNextEvent(p, fd, stream)
 			if err == io.EOF {
 				break
 			}
@@ -212,7 +249,7 @@ func BinlogFileParser(files []string) error {
 }
 
 // FileNextEvent ...
-func FileNextEvent(p *replication.BinlogParser, r io.Reader) (*replication.BinlogEvent, error) {
+func FileNextEvent(p *replication.BinlogParser, r io.Reader, stream cipher.Stream) (*replication.BinlogEvent, error) {
 	var err error
 	var head *replication.EventHeader
 	var event *replication.BinlogEvent
@@ -221,6 +258,10 @@ func FileNextEvent(p *replication.BinlogParser, r io.Reader) (*replication.Binlo
 	if _, err = io.ReadFull(r, bufHead); err != nil {
 		return event, err
 	}
+	if stream != nil {
+		bufHead = decryptAESCTR(stream, bufHead)
+	}
+
 	head, err = ParseEventHeader(bufHead)
 	if err != nil {
 		return event, errors.Trace(err)
@@ -231,6 +272,9 @@ func FileNextEvent(p *replication.BinlogParser, r io.Reader) (*replication.Binlo
 	if n, err := io.ReadFull(r, bufBody); err != nil {
 		err = errors.Errorf("get event body err %v, need %d - %d, but got %d", err, head.EventSize, replication.EventHeaderSize, n)
 		return event, err
+	}
+	if stream != nil {
+		bufBody = decryptAESCTR(stream, bufBody)
 	}
 
 	var rawData []byte
