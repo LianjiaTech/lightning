@@ -71,7 +71,14 @@ func BinlogParser() {
 
 // CheckBinlogFileHeader check file is binary log
 func CheckBinlogFileHeader(buf []byte) bool {
-	return bytes.Equal(buf, []byte{0xfe, 'b', 'i', 'n'})
+	// 0xFE62696E not encrypted
+	// 0xFD62696E encrypted
+	return bytes.Equal(buf, []byte{0xfe, 'b', 'i', 'n'}) || bytes.Equal(buf, []byte{0xfd, 'b', 'i', 'n'})
+}
+
+// CheckBinlogFileEncrypt check file is encrypted
+func CheckBinlogFileEncrypt(buf []byte) bool {
+	return bytes.Equal(buf, []byte{0xfd, 'b', 'i', 'n'})
 }
 
 // CheckBinlogFormat check binlog format
@@ -82,7 +89,11 @@ func CheckBinlogFormat(dsn string) string {
 		return format
 	}
 	defer db.Close()
-	res, err := db.Query("SELECT @@binlog_format;")
+	res, err := db.Query("SELECT @@binlog_format")
+	if err != nil {
+		fmt.Println("CheckBinlogFormat:", err.Error())
+		return format
+	}
 	for res.Next() {
 		res.Scan(&format)
 	}

@@ -14,6 +14,7 @@
 package event
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/LianjiaTech/lightning/common"
@@ -25,24 +26,24 @@ func init() {
 	rebuild.LoadSchemaInfo()
 }
 
-func TestBinlogFileValidator(t *testing.T) {
-	headersRight := [][]byte{
-		{0xfe, 'b', 'i', 'n'},
+func ExampleBinlogFileValidator() {
+	headers := [][]byte{
+		{0xfe, 'b', 'i', 'n'}, // not encrypted
+		{0xfd, 'b', 'i', 'n'}, // encrypted
+		{0xfe, 'g', 'i', 'f'}, // wrong file header
 	}
-	headersWrong := [][]byte{
-		{0xfe, 'g', 'i', 'f'},
+	for _, header := range headers {
+		fmt.Println("CheckBinlogFileHeader", header, CheckBinlogFileHeader(header))
+		fmt.Println("CheckBinlogFileEncrypt", header, CheckBinlogFileEncrypt(header))
 	}
-	for _, head := range headersRight {
-		if !CheckBinlogFileHeader(head) {
-			t.Error("CheckBinlogFileHeader should true")
-		}
-	}
-
-	for _, head := range headersWrong {
-		if CheckBinlogFileHeader(head) {
-			t.Error("CheckBinlogFileHeader should false")
-		}
-	}
+	// Output:
+	// CheckBinlogFileHeader [254 98 105 110] true
+	// CheckBinlogFileEncrypt [254 98 105 110] false
+	// CheckBinlogFileHeader [253 98 105 110] true
+	// CheckBinlogFileEncrypt [253 98 105 110] true
+	// CheckBinlogFileHeader [254 103 105 102] false
+	// CheckBinlogFileEncrypt [254 103 105 102] false
+\
 }
 
 func TestBinlogFileParser(t *testing.T) {
