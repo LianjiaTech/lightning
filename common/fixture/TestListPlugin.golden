@@ -4,3 +4,4 @@ lightning -plugin support following type
   stat: statistic ROW format binlog table update|insert|delete query count
   lua: self define lua scripts
   find: find binlog file name by event time
+  decrypt: decrypt binlog file using keyring

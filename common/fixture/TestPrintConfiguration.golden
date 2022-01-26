@@ -16,6 +16,7 @@ mysql:
   sync-interval: 1s
   read-timeout: 3s
   retry-count: 100
+  keyring: ""
 filters:
   tables: []
   ignore-tables:

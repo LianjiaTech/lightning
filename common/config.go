@@ -730,6 +730,7 @@ func ListPlugin() {
 	fmt.Println("  stat: statistic ROW format binlog table update|insert|delete query count")
 	fmt.Println("  lua: self define lua scripts")
 	fmt.Println("  find: find binlog file name by event time")
+	fmt.Println("  decrypt: decrypt binlog file using keyring")
 }
 
 // TimeOffset timezone offset seconds
