@@ -38,7 +38,24 @@ lightning -no-defaults -verbose -schema-file test/schema.sql test/binlog.000002 
 
 ## 查找指定时间的 event 在哪个 binlog 文件？
 
-```
+```bash
 # 要注意命令行支持的最大长度，直接 $(ls mysql-bin.0*) 可能导致参数过长无法获取结果
 lightning -binlog-file "$(ls mysql-bin.0*)" -start-datetime "2021-01-13 07:00:00" -stop-datetime "2021-01-13 18:00:00" -plugin find
+```
+
+## 通过 keyring 解密 MySQL 8.0 加密的 binlog
+
+MySQL 8.0 支持通过 keyring 对 binlog 进行加密，已经加密的 binlog lightning 解密需要提供 keyring 文件路径。只是解密不需要提取 SQL 时可以通过如下命令进行解密。
+
+```bash
+lightning -plugin decrypt -keyring keyring binlog.encrypted > binlog.decrypted
+```
+
+注意：lightning 解密会将结果打印到标准输出，需要添加输出重定向，不然会满屏乱码。lightning 的解密方式是流式的，不用担心大文件导致内存使用过多。
+
+lightning 还支持直接分析加密的 binlog，只需要添加 `-keyring` 配置即可，会根据 binlog 文件头的 magic header 类型自动识别。
+
+```bash
+# 回滚所有删除事件
+lightning -plugin flashback -keyring keyring -event-types delete binlog.encrypted
 ```
