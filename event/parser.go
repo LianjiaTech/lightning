@@ -189,7 +189,14 @@ func CheckBinlogFileTime(files []string) error {
 // BinlogFileParser parser binary log file
 func BinlogFileParser(files []string) error {
 	for _, filename := range files {
-		fd, err := os.Open(filename)
+		var fd *os.File
+		var err error
+		switch filename {
+		case "-":
+			fd = os.Stdin
+		default:
+			fd, err = os.Open(filename)
+		}
 		if err != nil {
 			return err
 		}

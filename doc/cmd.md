@@ -59,3 +59,12 @@ lightning 还支持直接分析加密的 binlog，只需要添加 `-keyring` 配
 # 回滚所有删除事件
 lightning -plugin flashback -keyring keyring -event-types delete binlog.encrypted
 ```
+
+## 从标准输入读取 binlog
+
+有时候需要分析的 binlog 并不在本机，可能存储在 s3 或其他服务器上。分析远程 binlog 文件时不想占用本地磁盘空间可以选择从标准输入读取 binlog。添加 `-` 表示从标准输入读取文件内容，示例如下：
+
+```bash
+# 仅以 binlog 文件存储在 minio 为例，使用 minio client 读取远程经过压缩的 binlog 文件
+mc cat path/to/binlog_file.gz | gunzip | ./lightning - > decrypt_log.sql
+```
