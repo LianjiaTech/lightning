@@ -120,38 +120,43 @@ func BuildValues(event *replication.RowsEvent) [][]string {
 				columns = append(columns, "NULL")
 				continue
 			}
-
+			var unsigned bool
+			if ok := Schemas[table]; ok != nil {
+				if (Schemas[table].Cols[i].Tp.Flag & mysql.UNSIGNED_FLAG) > 0 {
+					unsigned = true
+				}
+			}
 			switch t {
 			case mysql.MYSQL_TYPE_DECIMAL, mysql.MYSQL_TYPE_NEWDECIMAL, mysql.MYSQL_TYPE_FLOAT, mysql.MYSQL_TYPE_DOUBLE, mysql.MYSQL_TYPE_NULL,
 				mysql.MYSQL_TYPE_TIMESTAMP:
 				columns = append(columns, fmt.Sprint(row[i]))
 			// binlog use -1 for unsigned int max value
 			case mysql.MYSQL_TYPE_TINY:
-				if (Schemas[table].Cols[i].Tp.Flag&mysql.UNSIGNED_FLAG) > 0 && fmt.Sprint(row[i]) == "-1" {
+				if unsigned && fmt.Sprint(row[i]) == "-1" {
 					columns = append(columns, "255")
 				} else {
 					columns = append(columns, fmt.Sprint(row[i]))
 				}
 			case mysql.MYSQL_TYPE_SHORT:
-				if (Schemas[table].Cols[i].Tp.Flag&mysql.UNSIGNED_FLAG) > 0 && fmt.Sprint(row[i]) == "-1" {
+				if unsigned && fmt.Sprint(row[i]) == "-1" {
 					columns = append(columns, "65535")
 				} else {
 					columns = append(columns, fmt.Sprint(row[i]))
 				}
 			case mysql.MYSQL_TYPE_INT24:
-				if (Schemas[table].Cols[i].Tp.Flag&mysql.UNSIGNED_FLAG) > 0 && fmt.Sprint(row[i]) == "-1" {
+				if unsigned && fmt.Sprint(row[i]) == "-1" {
 					columns = append(columns, "16777215")
 				} else {
 					columns = append(columns, fmt.Sprint(row[i]))
 				}
 			case mysql.MYSQL_TYPE_LONG:
-				if (Schemas[table].Cols[i].Tp.Flag&mysql.UNSIGNED_FLAG) > 0 && fmt.Sprint(row[i]) == "-1" {
+				if unsigned && fmt.Sprint(row[i]) == "-1" {
 					columns = append(columns, "4294967295")
 				} else {
 					columns = append(columns, fmt.Sprint(row[i]))
 				}
 			case mysql.MYSQL_TYPE_LONGLONG:
-				if (Schemas[table].Cols[i].Tp.Flag&mysql.UNSIGNED_FLAG) > 0 && fmt.Sprint(row[i]) == "-1" {
+				if unsigned && fmt.Sprint(row[i]) == "-1" {
 					columns = append(columns, "18446744073709551615")
 				} else {
 					columns = append(columns, fmt.Sprint(row[i]))
