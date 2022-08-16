@@ -33,7 +33,7 @@ import (
 )
 
 // Schemas ...
-var Schemas []*ast.CreateTableStmt
+var Schemas map[string]*ast.CreateTableStmt
 
 // Columns ...
 var Columns map[string][]string
@@ -168,6 +168,7 @@ func loadSchemaFromMySQL() error {
 }
 
 func schemaAppend(database, sql string) error {
+	Schemas = make(map[string]*ast.CreateTableStmt)
 	sql = removeIncompatibleWords(sql)
 	stmts, err := TiParse(sql, common.Config.Global.Charset, mysql.Charsets[common.Config.Global.Charset])
 	if err != nil {
@@ -182,7 +183,7 @@ func schemaAppend(database, sql string) error {
 			if node.Table.Schema.String() == "" {
 				node.Table.Schema = model.NewCIStr(database)
 			}
-			Schemas = append(Schemas, node)
+			Schemas[fmt.Sprintf("`%s`.`%s`", database, node.Table.Name)] = node
 		case *ast.UseStmt:
 			database = node.DBName
 		}

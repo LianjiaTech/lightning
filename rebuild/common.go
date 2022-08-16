@@ -111,6 +111,7 @@ func RowEventTable(event *replication.BinlogEvent) string {
 
 // BuildValues build values list
 func BuildValues(event *replication.RowsEvent) [][]string {
+	table := fmt.Sprintf("`%s`.`%s`", string(event.Table.Schema), event.Table.Table)
 	var values [][]string
 	for _, row := range event.Rows {
 		var columns []string
@@ -121,10 +122,40 @@ func BuildValues(event *replication.RowsEvent) [][]string {
 			}
 
 			switch t {
-			case mysql.MYSQL_TYPE_DECIMAL, mysql.MYSQL_TYPE_NEWDECIMAL, mysql.MYSQL_TYPE_TINY, mysql.MYSQL_TYPE_SHORT,
-				mysql.MYSQL_TYPE_LONG, mysql.MYSQL_TYPE_FLOAT, mysql.MYSQL_TYPE_DOUBLE, mysql.MYSQL_TYPE_NULL,
-				mysql.MYSQL_TYPE_TIMESTAMP, mysql.MYSQL_TYPE_LONGLONG, mysql.MYSQL_TYPE_INT24:
+			case mysql.MYSQL_TYPE_DECIMAL, mysql.MYSQL_TYPE_NEWDECIMAL, mysql.MYSQL_TYPE_FLOAT, mysql.MYSQL_TYPE_DOUBLE, mysql.MYSQL_TYPE_NULL,
+				mysql.MYSQL_TYPE_TIMESTAMP:
 				columns = append(columns, fmt.Sprint(row[i]))
+			// binlog use -1 for unsigned int max value
+			case mysql.MYSQL_TYPE_TINY:
+				if (Schemas[table].Cols[i].Tp.Flag&mysql.UNSIGNED_FLAG) > 0 && fmt.Sprint(row[i]) == "-1" {
+					columns = append(columns, "255")
+				} else {
+					columns = append(columns, fmt.Sprint(row[i]))
+				}
+			case mysql.MYSQL_TYPE_SHORT:
+				if (Schemas[table].Cols[i].Tp.Flag&mysql.UNSIGNED_FLAG) > 0 && fmt.Sprint(row[i]) == "-1" {
+					columns = append(columns, "65535")
+				} else {
+					columns = append(columns, fmt.Sprint(row[i]))
+				}
+			case mysql.MYSQL_TYPE_INT24:
+				if (Schemas[table].Cols[i].Tp.Flag&mysql.UNSIGNED_FLAG) > 0 && fmt.Sprint(row[i]) == "-1" {
+					columns = append(columns, "16777215")
+				} else {
+					columns = append(columns, fmt.Sprint(row[i]))
+				}
+			case mysql.MYSQL_TYPE_LONG:
+				if (Schemas[table].Cols[i].Tp.Flag&mysql.UNSIGNED_FLAG) > 0 && fmt.Sprint(row[i]) == "-1" {
+					columns = append(columns, "4294967295")
+				} else {
+					columns = append(columns, fmt.Sprint(row[i]))
+				}
+			case mysql.MYSQL_TYPE_LONGLONG:
+				if (Schemas[table].Cols[i].Tp.Flag&mysql.UNSIGNED_FLAG) > 0 && fmt.Sprint(row[i]) == "-1" {
+					columns = append(columns, "18446744073709551615")
+				} else {
+					columns = append(columns, fmt.Sprint(row[i]))
+				}
 			case mysql.MYSQL_TYPE_DATE, mysql.MYSQL_TYPE_TIME, mysql.MYSQL_TYPE_DATETIME, mysql.MYSQL_TYPE_YEAR,
 				mysql.MYSQL_TYPE_NEWDATE, mysql.MYSQL_TYPE_TIMESTAMP2, mysql.MYSQL_TYPE_DATETIME2, mysql.MYSQL_TYPE_TIME2:
 				columns = append(columns, fmt.Sprint("'", row[i], "'"))
