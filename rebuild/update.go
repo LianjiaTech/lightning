@@ -45,6 +45,8 @@ func UpdateQuery(event *replication.BinlogEvent) {
 	ev := event.Event.(*replication.RowsEvent)
 	values := BuildValues(ev)
 
+	common.Verbose("-- [DEBUG] event: update, table: %s, rows: %d\n", table, len(values))
+
 	if common.Config.Rebuild.Replace {
 		var insertValues [][]string
 		for odd, value := range values {
@@ -224,6 +226,14 @@ func UpdateStat(event *replication.BinlogEvent) {
 		TableStats[table]["update"]++
 	} else {
 		TableStats[table] = map[string]int64{"update": 1}
+	}
+
+	ev := event.Event.(*replication.RowsEvent)
+	values := BuildValues(ev)
+	if RowsStats[table] != nil {
+		RowsStats[table]["update"] += int64(len(values))
+	} else {
+		RowsStats[table] = map[string]int64{"update": int64(len(values))}
 	}
 }
 

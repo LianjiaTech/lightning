@@ -127,6 +127,8 @@ func InsertRollbackQuery(event *replication.BinlogEvent) {
 	ev := event.Event.(*replication.RowsEvent)
 	values := BuildValues(ev)
 
+	common.Verbose("-- [DEBUG] event: insert, table: %s, rows: %d\n", table, len(values))
+
 	deleteQuery(table, values)
 }
 
@@ -137,6 +139,14 @@ func InsertStat(event *replication.BinlogEvent) {
 		TableStats[table]["insert"]++
 	} else {
 		TableStats[table] = map[string]int64{"insert": 1}
+	}
+
+	ev := event.Event.(*replication.RowsEvent)
+	values := BuildValues(ev)
+	if RowsStats[table] != nil {
+		RowsStats[table]["insert"] += int64(len(values))
+	} else {
+		RowsStats[table] = map[string]int64{"insert": int64(len(values))}
 	}
 }
 

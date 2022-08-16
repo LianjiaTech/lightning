@@ -45,6 +45,8 @@ func DeleteQuery(event *replication.BinlogEvent) {
 	ev := event.Event.(*replication.RowsEvent)
 	values := BuildValues(ev)
 
+	common.Verbose("-- [DEBUG] event: delete, table: %s, rows: %d\n", table, len(values))
+
 	deleteQuery(table, values)
 }
 
@@ -110,6 +112,14 @@ func DeleteStat(event *replication.BinlogEvent) {
 		TableStats[table]["delete"]++
 	} else {
 		TableStats[table] = map[string]int64{"delete": 1}
+	}
+
+	ev := event.Event.(*replication.RowsEvent)
+	values := BuildValues(ev)
+	if RowsStats[table] != nil {
+		RowsStats[table]["delete"] += int64(len(values))
+	} else {
+		RowsStats[table] = map[string]int64{"delete": int64(len(values))}
 	}
 }
 

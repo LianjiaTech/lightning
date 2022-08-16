@@ -50,6 +50,7 @@ func TestListPlugin(t *testing.T) {
 	}
 }
 
+// go test github.com/LianjiaTech/lightning/common -v -update -run TestTimeOffset
 func TestTimeOffset(t *testing.T) {
 	tzs := []string{
 		"UTC",

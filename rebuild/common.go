@@ -35,6 +35,9 @@ import (
 // TableStats
 var TableStats map[string]map[string]int64
 
+// RowsStats
+var RowsStats map[string]map[string]int64
+
 // QueryStats ...
 var QueryStats map[string]int64
 
@@ -69,6 +72,7 @@ var TransactionTimeStats []float64
 
 type Stats struct {
 	Table           map[string]map[string]int64  `json:"TableStats"`
+	Rows            map[string]map[string]int64  `json:"RowsStats"`
 	Query           map[string]int64             `json:"QueryStats"`
 	Transaction     map[string]map[string]string `json:"TransactionStats"`
 	TransactionSize []float64                    `json:"-"` // take from end_log_pos between begin and commit
@@ -86,6 +90,7 @@ var InsertValuesMerge []string
 
 func init() {
 	TableStats = make(map[string]map[string]int64)
+	RowsStats = make(map[string]map[string]int64)
 }
 
 // RowEventTable ...
@@ -205,6 +210,7 @@ func printBinlogStat() {
 
 	BinlogStats = Stats{
 		Table: TableStats,
+		Rows:  RowsStats,
 		Query: QueryStats,
 		Transaction: map[string]map[string]string{
 			"TimeSeconds": {
