@@ -1,4 +1,5 @@
 SET NAMES UTF8MB4;
+SET SQL_MODE = "";
 
 CREATE DATABASE IF NOT EXISTS test;
 USE test;
@@ -56,10 +57,13 @@ INSERT INTO testNoPRI VALUES (1, 'abc');
 
 CREATE TABLE `timeTest` (
   `a` timestamp NULL DEFAULT NULL,
-  `b` datetime DEFAULT NULL
+  `b` datetime DEFAULT NULL,
+  `c` timestamp(3) DEFAULT NULL,
+  `d` datetime(3) DEFAULT NULL
 ) ENGINE=InnoDB;
 
-INSERT INTO timeTest VALUES ("2016-06-01 23:55:29", "2016-06-01 23:55:29");
+INSERT INTO timeTest VALUES ("2016-06-01 23:55:29", "2016-06-01 23:55:29", "2016-06-01 23:55:29.123", "2016-06-01 23:55:29.123");
+INSERT INTO timeTest VALUES (0, 0, 0, 0);
 
 CREATE TABLE testDecimal(
   `d1` DECIMAL(38,2) NOT NULL DEFAULT 0,
@@ -85,3 +89,16 @@ CREATE TABLE `test_int_max` (
 ) ENGINE=InnoDB;
 
 INSERT INTO `test_int_max` VALUES (255, 65535, 16777215, 4294967295, 18446744073709551615, -1, -1, -1, -1, -1);
+
+CREATE TABLE `city` (
+  `ID` int(11) NOT NULL AUTO_INCREMENT,
+  `Name` char(35) NOT NULL DEFAULT '',
+  `CountryCode` char(3) NOT NULL DEFAULT '',
+  `District` char(20) NOT NULL DEFAULT '',
+  `Info` json DEFAULT NULL,
+  PRIMARY KEY (`ID`)
+) ENGINE=InnoDB;
+
+INSERT INTO `city` VALUES
+(1,'Kabul','AFG','Kabol','{"Population": 1780000}'),
+(2,'Qandahar','AFG','Qandahar','{"Population": 237500}');
