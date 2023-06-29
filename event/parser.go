@@ -104,6 +104,7 @@ func CheckBinlogFormat(dsn string) string {
 		fmt.Println("CheckBinlogFormat:", err.Error())
 		return format
 	}
+	defer res.Close()
 	for res.Next() {
 		res.Scan(&format)
 	}

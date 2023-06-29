@@ -111,6 +111,9 @@ func loadSchemaFromMySQL() error {
 			common.Log.Error(errors.Trace(err).Error())
 			continue
 		}
+
+		// SHOW TABLES
+		var tables []string
 		for res.Next() {
 			var table string
 			err = res.Scan(&table)
@@ -118,6 +121,12 @@ func loadSchemaFromMySQL() error {
 				common.Log.Error(errors.Trace(err).Error())
 				continue
 			}
+			tables = append(tables, table)
+		}
+
+		// SHOW CREATE TABLE
+		for _, table := range tables {
+
 			tableRes, err := db.Query(fmt.Sprintf("SHOW CREATE TABLE `%s`.`%s`;", database, table))
 			if err != nil {
 				common.Log.Error(errors.Trace(err).Error())
@@ -251,6 +260,7 @@ func buildFakeTable(db *sql.DB, table string) string {
 		common.Log.Error(err.Error())
 		return ""
 	}
+	defer res.Close()
 	for res.Next() {
 		res.Scan(&col, &t, &t, &key, &t, &t)
 		columns = append(columns, fmt.Sprintf("`%s` INT", col))
