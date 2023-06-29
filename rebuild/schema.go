@@ -103,6 +103,7 @@ func loadSchemaFromMySQL() error {
 			databases = append(databases, database)
 		}
 	}
+	res.Close()
 
 	for _, database := range databases {
 		res, err := db.Query(fmt.Sprintf("SHOW TABLES FROM `%s`", database))
