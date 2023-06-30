@@ -244,6 +244,12 @@ func UpdateMasterInfo(event *replication.BinlogEvent) {
 		}
 	default:
 	}
+
+	// START SLAVE UNTIL MASTER_LOG_FILE = 'log_name', MASTER_LOG_POS = log_pos
+	if common.MasterInfo.MasterLogFile == common.MasterInfo.UntilLogFile &&
+		common.MasterInfo.UntilLogPos <= common.MasterInfo.MasterLogPos {
+		Ending = true
+	}
 	common.MasterInfo.SecondsBehindMaster = time.Now().Unix() - int64(event.Header.Timestamp)
 	if common.Config.MySQL.SyncDuration.Seconds() == 0 {
 		common.FlushReplicationInfo()

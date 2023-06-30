@@ -51,6 +51,7 @@ fmt:
 test:
 	@echo "$(CGREEN)Run all test cases ...$(CEND)"
 	go test -timeout 10m -race ./...
+	@git checkout common/fixture/master.info etc/master.info
 	@echo "test Success!"
 
 # Code Coverage

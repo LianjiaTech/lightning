@@ -152,6 +152,11 @@ type ChangeMaster struct {
 	ExecutedGTIDSet string `yaml:"executed_gtid_set"`
 	AutoPosition    bool   `yaml:"auto_position"`
 
+	UntilLogFile     string `yaml:"until_log_file"`
+	UntilLogPos      int64  `yaml:"until_log_pos"`
+	UntilBeforeGTIDs string `yaml:"until_before_gtids"`
+	UntilAfterGTIDs  string `yaml:"until_after_gtids"`
+
 	SecondsBehindMaster int64  `yaml:"seconds_behind_master"` // last execute event timestamp
 	ServerID            uint32 `yaml:"server-id"`
 	ServerType          string `yaml:"server-type"` // mysql, mariadb
@@ -289,6 +294,10 @@ func ParseConfig() {
 	autoPosition := flag.Bool("auto-position", false, "master.info auto_position")
 	serverId := flag.Uint("slave-server-id", 0, "master.info server-id")
 	serverType := flag.String("server-type", "", "master.info server-type")
+	masterUntilLogFile := flag.String("master-until-log-file", "", "start slave until master-log-file")
+	masterUntilLogPos := flag.Int64("master-until-log-pos", 0, "start slave until master-log-pos")
+	// masterUntilBeforeGTIDs := flag.String("master-until-before-gtids", "", "start slave SQL_BEFORE_GTIDS")
+	// masterUntilAfterGTIDs := flag.String("master-until-after-gtids", "", "start slave SQL_AFTER_GTIDS")
 
 	flag.CommandLine.SetOutput(os.Stdout)
 	flag.Parse()
@@ -587,6 +596,19 @@ func ParseConfig() {
 	if *serverType != "" {
 		MasterInfo.ServerType = *serverType
 	}
+	if *masterUntilLogFile != "" {
+		MasterInfo.UntilLogFile = *masterUntilLogFile
+	}
+	if *masterUntilLogPos != 0 {
+		MasterInfo.UntilLogPos = *masterUntilLogPos
+	}
+	// TODO:
+	// if *masterUntilBeforeGTIDs != "" {
+	// 	MasterInfo.UntilBeforeGTIDs = *masterUntilBeforeGTIDs
+	// }
+	// if *masterUntilAfterGTIDs != "" {
+	// 	MasterInfo.UntilAfterGTIDs = *masterUntilAfterGTIDs
+	// }
 
 	if *printMasterInfo {
 		PrintMasterInfo()
