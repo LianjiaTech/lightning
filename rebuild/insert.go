@@ -41,7 +41,13 @@ func InsertRebuild(event *replication.BinlogEvent) string {
 
 // InsertQuery ...
 func InsertQuery(event *replication.BinlogEvent) {
-	table := RowEventTable(event)
+	var table string
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Printf("-- Table: %s, Error: %s\n", table, strings.Split(fmt.Sprint(r), "\n")[0])
+		}
+	}()
+	table = RowEventTable(event)
 	ev := event.Event.(*replication.RowsEvent)
 	values := BuildValues(ev)
 	insertQuery(table, values)
@@ -123,7 +129,13 @@ func insertQuery(table string, values [][]string) {
 
 // InsertRollbackQuery ...
 func InsertRollbackQuery(event *replication.BinlogEvent) {
-	table := RowEventTable(event)
+	var table string
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Printf("-- Table: %s, Error: %s\n", table, strings.Split(fmt.Sprint(r), "\n")[0])
+		}
+	}()
+	table = RowEventTable(event)
 	ev := event.Event.(*replication.RowsEvent)
 	values := BuildValues(ev)
 

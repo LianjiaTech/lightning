@@ -126,6 +126,25 @@ func loadSchemaFromMySQL() error {
 
 		// SHOW CREATE TABLE
 		for _, table := range tables {
+			var ignore bool
+			if len(common.Config.Filters.Tables) > 0 {
+				ignore = true
+			}
+			for _, tb := range common.Config.Filters.Tables {
+				// TODO: % 匹配有点复杂，这里暂且加载所有表结构
+				if strings.Contains(tb, "%") && strings.HasPrefix(strings.Replace(tb, "`", "", -1), database+".") {
+					ignore = false
+					break
+				}
+				// 对于表较多的情况，只加载需要的表将极大加速表结构加载速度
+				if strings.Replace(tb, "`", "", -1) == fmt.Sprintf("%s.%s", database, table) {
+					ignore = false
+					break
+				}
+			}
+			if ignore {
+				continue
+			}
 
 			tableRes, err := db.Query(fmt.Sprintf("SHOW CREATE TABLE `%s`.`%s`;", database, table))
 			if err != nil {
@@ -178,7 +197,6 @@ func loadSchemaFromMySQL() error {
 }
 
 func schemaAppend(database, sql string) error {
-	Schemas = make(map[string]*ast.CreateTableStmt)
 	sql = removeIncompatibleWords(sql)
 	stmts, err := TiParse(sql, common.Config.Global.Charset, mysql.Charsets[common.Config.Global.Charset])
 	if err != nil {

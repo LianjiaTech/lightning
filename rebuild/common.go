@@ -19,12 +19,14 @@ import (
 	"fmt"
 
 	"github.com/LianjiaTech/lightning/common"
+	"github.com/pingcap/parser/ast"
 
 	"github.com/BixData/gluabit32"
 	"github.com/BixData/gluasocket"
 	"github.com/go-mysql-org/go-mysql/mysql"
 	"github.com/go-mysql-org/go-mysql/replication"
 	"github.com/montanaflynn/stats"
+
 	uuid "github.com/satori/go.uuid"
 	lua "github.com/yuin/gopher-lua"
 	"github.com/zhu327/gluadb"
@@ -91,6 +93,7 @@ var InsertValuesMerge []string
 func init() {
 	TableStats = make(map[string]map[string]int64)
 	RowsStats = make(map[string]map[string]int64)
+	Schemas = make(map[string]*ast.CreateTableStmt)
 }
 
 // RowEventTable ...

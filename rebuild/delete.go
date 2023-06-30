@@ -41,7 +41,13 @@ func DeleteRebuild(event *replication.BinlogEvent) string {
 
 // DeleteQuery build original delete SQL
 func DeleteQuery(event *replication.BinlogEvent) {
-	table := RowEventTable(event)
+	var table string
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Printf("-- Table: %s, Error: %s\n", table, strings.Split(fmt.Sprint(r), "\n")[0])
+		}
+	}()
+	table = RowEventTable(event)
 	ev := event.Event.(*replication.RowsEvent)
 	values := BuildValues(ev)
 
@@ -51,7 +57,6 @@ func DeleteQuery(event *replication.BinlogEvent) {
 }
 
 func deleteQuery(table string, values [][]string) {
-
 	// for common.Config.Rebuild.WithoutDBName
 	shortTableName := onlyTable(table)
 
@@ -98,7 +103,13 @@ func deleteQuery(table string, values [][]string) {
 
 // DeleteRollbackQuery build rollback insert SQL
 func DeleteRollbackQuery(event *replication.BinlogEvent) {
-	table := RowEventTable(event)
+	var table string
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Printf("-- Table: %s, Error: %s\n", table, strings.Split(fmt.Sprint(r), "\n")[0])
+		}
+	}()
+	table = RowEventTable(event)
 	ev := event.Event.(*replication.RowsEvent)
 	values := BuildValues(ev)
 

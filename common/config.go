@@ -274,7 +274,7 @@ func ParseConfig() {
 	filterEventTypes := flag.String("event-types", "", "binlog filter event types")
 
 	// Rebuild section config
-	rebuildPlugin := flag.String("plugin", "", "plugin name")
+	rebuildPlugin := flag.String("plugin", "", "plugin name, use --list-plugin check all supported plugins")
 	rebuildCompleteInsert := flag.Bool("complete-insert", false, "complete column info, like 'INSERT INTO tb (col) VALUES (1)'")
 	rebuildExtendedInsertCount := flag.Int("extended-insert-count", 0, "use multiple-row INSERT syntax that include several VALUES")
 	rebuildReplace := flag.Bool("replace", false, "use REPLACE INTO instead of INSERT INTO, UPDATE")
@@ -478,7 +478,7 @@ func ParseConfig() {
 	}
 	for _, t := range Config.Filters.Tables {
 		if !strings.Contains(t, ".") {
-			fmt.Println("filter -tables format should be `db`.`tb`")
+			fmt.Println("filter -tables format should be db.tb")
 			os.Exit(1)
 		}
 	}
@@ -487,7 +487,7 @@ func ParseConfig() {
 	}
 	for _, t := range Config.Filters.IgnoreTables {
 		if !strings.Contains(t, ".") {
-			fmt.Println("filter -ignore-tables format should be `db`.`tb`")
+			fmt.Println("filter -ignore-tables format should be db.tb")
 			os.Exit(1)
 		}
 	}

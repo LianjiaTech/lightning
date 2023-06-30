@@ -41,7 +41,13 @@ func UpdateRebuild(event *replication.BinlogEvent) string {
 
 // UpdateQuery ...
 func UpdateQuery(event *replication.BinlogEvent) {
-	table := RowEventTable(event)
+	var table string
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Printf("-- Table: %s, Error: %s\n", table, strings.Split(fmt.Sprint(r), "\n")[0])
+		}
+	}()
+	table = RowEventTable(event)
 	ev := event.Event.(*replication.RowsEvent)
 	values := BuildValues(ev)
 
@@ -61,7 +67,6 @@ func UpdateQuery(event *replication.BinlogEvent) {
 }
 
 func updateQuery(table string, values [][]string) {
-
 	var where []string
 	var set []string
 
@@ -139,7 +144,13 @@ func updateQuery(table string, values [][]string) {
 
 // UpdateRollbackQuery ...
 func UpdateRollbackQuery(event *replication.BinlogEvent) {
-	table := RowEventTable(event)
+	var table string
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Printf("-- Table: %s, Error: %s\n", table, strings.Split(fmt.Sprint(r), "\n")[0])
+		}
+	}()
+	table = RowEventTable(event)
 	ev := event.Event.(*replication.RowsEvent)
 	values := BuildValues(ev)
 
