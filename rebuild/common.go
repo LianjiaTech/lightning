@@ -17,6 +17,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/LianjiaTech/lightning/common"
 	"github.com/pingcap/parser/ast"
@@ -211,6 +212,10 @@ func EventHeaderRebuild(event *replication.BinlogEvent) {
 	header := event.Header
 	common.Verbose("-- [DEBUG] EventType: %s, ServerID: %d, Timestamp: %d, LogPos: %d, EventSize: %d, Flags: %d\n",
 		header.EventType.String(), header.ServerID, header.Timestamp, header.LogPos, header.EventSize, header.Flags)
+
+	if common.Config.Rebuild.ForeachTime {
+		common.Config.Rebuild.CurrentEventTime = fmt.Sprint(time.Unix(int64(header.Timestamp), 0).Format("2006-01-02 15:04:05"))
+	}
 }
 
 // LastStatus ...

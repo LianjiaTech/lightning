@@ -60,6 +60,11 @@ func deleteQuery(table string, values [][]string) {
 	// for common.Config.Rebuild.WithoutDBName
 	shortTableName := onlyTable(table)
 
+	var deletePrefix = "DELETE FROM"
+	if common.Config.Rebuild.ForeachTime && common.Config.Rebuild.CurrentEventTime != "" {
+		deletePrefix = fmt.Sprintf(`/* %s */%s`, common.Config.Rebuild.CurrentEventTime, deletePrefix)
+	}
+
 	if ok := PrimaryKeys[table]; ok != nil {
 		for _, value := range values {
 			var where []string
@@ -76,9 +81,9 @@ func deleteQuery(table string, values [][]string) {
 			}
 
 			if common.Config.Rebuild.WithoutDBName {
-				fmt.Printf("DELETE FROM %s WHERE %s LIMIT 1;\n", shortTableName, strings.Join(where, " AND "))
+				fmt.Printf("%s %s WHERE %s LIMIT 1;\n", deletePrefix, shortTableName, strings.Join(where, " AND "))
 			} else {
-				fmt.Printf("DELETE FROM %s WHERE %s LIMIT 1;\n", table, strings.Join(where, " AND "))
+				fmt.Printf("%s %s WHERE %s LIMIT 1;\n", deletePrefix, table, strings.Join(where, " AND "))
 			}
 		}
 	} else {
@@ -93,9 +98,9 @@ func deleteQuery(table string, values [][]string) {
 				}
 			}
 			if common.Config.Rebuild.WithoutDBName {
-				fmt.Printf("-- DELETE FROM %s WHERE %s LIMIT 1;\n", shortTableName, strings.Join(where, " AND "))
+				fmt.Printf("-- %s %s WHERE %s LIMIT 1;\n", deletePrefix, shortTableName, strings.Join(where, " AND "))
 			} else {
-				fmt.Printf("-- DELETE FROM %s WHERE %s LIMIT 1;\n", table, strings.Join(where, " AND "))
+				fmt.Printf("-- %s %s WHERE %s LIMIT 1;\n", deletePrefix, table, strings.Join(where, " AND "))
 			}
 		}
 	}

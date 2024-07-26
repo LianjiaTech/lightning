@@ -115,6 +115,8 @@ type Rebuild struct {
 	Replace             bool          `yaml:"replace"`
 	SleepInterval       string        `yaml:"sleep-interval"`
 	SleepDuration       time.Duration `yaml:"-"`
+	ForeachTime         bool          `yaml:"foreach-time"`
+	CurrentEventTime    string        `yaml:"-"`
 	LuaScript           string        `yaml:"lua-script"`
 	WithoutDBName       bool          `yaml:"without-db-name"`
 }
@@ -282,6 +284,7 @@ func ParseConfig() {
 	rebuildIgnoreColumns := flag.String("ignore-columns", "", "query rebuild ignore columns")
 	rebuildLuaScript := flag.String("lua-script", "", "lua plugin script file")
 	rebuildWithoutDBName := flag.Bool("without-db-name", false, "insert/delete/update query without database name, only table name")
+	rebuildForeachTime := flag.Bool("foreach-time", false, "add time foreach sql")
 
 	// master.info config
 	masterHost := flag.String("master-host", "", "master.info master_host")
@@ -540,6 +543,9 @@ func ParseConfig() {
 	}
 	if *rebuildWithoutDBName {
 		Config.Rebuild.WithoutDBName = *rebuildWithoutDBName
+	}
+	if *rebuildForeachTime {
+		Config.Rebuild.ForeachTime = *rebuildForeachTime
 	}
 
 	LoadMasterInfo()

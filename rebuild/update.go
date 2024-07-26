@@ -70,6 +70,11 @@ func updateQuery(table string, values [][]string) {
 	var where []string
 	var set []string
 
+	var updatePrefix = "UPDATE"
+	if common.Config.Rebuild.ForeachTime && common.Config.Rebuild.CurrentEventTime != "" {
+		updatePrefix = fmt.Sprintf(`/* %s */%s`, common.Config.Rebuild.CurrentEventTime, updatePrefix)
+	}
+
 	// for common.Config.Rebuild.WithoutDBName
 	shortTableName := onlyTable(table)
 
@@ -110,9 +115,9 @@ func updateQuery(table string, values [][]string) {
 				}
 
 				if common.Config.Rebuild.WithoutDBName {
-					fmt.Printf("UPDATE %s SET %s WHERE %s LIMIT 1;\n", shortTableName, strings.Join(set, ", "), strings.Join(where, " AND "))
+					fmt.Printf("%s %s SET %s WHERE %s LIMIT 1;\n", updatePrefix, shortTableName, strings.Join(set, ", "), strings.Join(where, " AND "))
 				} else {
-					fmt.Printf("UPDATE %s SET %s WHERE %s LIMIT 1;\n", table, strings.Join(set, ", "), strings.Join(where, " AND "))
+					fmt.Printf("%s %s SET %s WHERE %s LIMIT 1;\n", updatePrefix, table, strings.Join(set, ", "), strings.Join(where, " AND "))
 				}
 			}
 		}
@@ -133,9 +138,9 @@ func updateQuery(table string, values [][]string) {
 					set = append(set, fmt.Sprintf("@%d = %s", i, v))
 				}
 				if common.Config.Rebuild.WithoutDBName {
-					fmt.Printf("-- UPDATE %s SET %s WHERE %s LIMIT 1;\n", shortTableName, strings.Join(set, ", "), strings.Join(where, " AND "))
+					fmt.Printf("-- %s %s SET %s WHERE %s LIMIT 1;\n", updatePrefix, shortTableName, strings.Join(set, ", "), strings.Join(where, " AND "))
 				} else {
-					fmt.Printf("-- UPDATE %s SET %s WHERE %s LIMIT 1;\n", table, strings.Join(set, ", "), strings.Join(where, " AND "))
+					fmt.Printf("-- %s %s SET %s WHERE %s LIMIT 1;\n", updatePrefix, table, strings.Join(set, ", "), strings.Join(where, " AND "))
 				}
 			}
 		}

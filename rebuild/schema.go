@@ -235,6 +235,10 @@ func removeIncompatibleWords(sql string) string {
 	re = regexp.MustCompile(`CHARACTER SET [a-z_0-9]* `)
 	sql = re.ReplaceAllString(sql, "")
 
+	// DEFAULT CHARSET=utf8mb3
+	re = regexp.MustCompile(`DEFAULT CHARSET=[a-z_0-9]*`)
+	sql = re.ReplaceAllString(sql, "")
+
 	return sql
 }
 

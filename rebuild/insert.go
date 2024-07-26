@@ -60,6 +60,9 @@ func insertQuery(table string, values [][]string) {
 	} else {
 		insertPrefix = "INSERT INTO"
 	}
+	if common.Config.Rebuild.ForeachTime && common.Config.Rebuild.CurrentEventTime != "" {
+		insertPrefix = fmt.Sprintf(`/* %s */%s`, common.Config.Rebuild.CurrentEventTime, insertPrefix)
+	}
 
 	// for common.Config.Rebuild.WithoutDBName
 	shortTableName := onlyTable(table)
