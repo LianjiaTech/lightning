@@ -190,6 +190,12 @@ func QueryStat(sql string) {
 	// TODO: statement base table stat
 	// stmt, err := TiParse(sql, common.Config.Global.Charset, mysql.Charsets[common.Config.Global.Charset])
 	t := strings.ToLower(strings.Fields(sql)[0])
+
+	// ignore comment in Query Event
+	if t == "--" || strings.HasPrefix(t, "#") || strings.HasPrefix(t, "/*") {
+		return
+	}
+
 	if QueryStats != nil {
 		QueryStats[t]++
 	} else {
