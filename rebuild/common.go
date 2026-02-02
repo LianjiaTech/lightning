@@ -169,31 +169,99 @@ func BuildValues(event *replication.RowsEvent) [][]string {
 				mysql.MYSQL_TYPE_NEWDATE, mysql.MYSQL_TYPE_TIMESTAMP2, mysql.MYSQL_TYPE_DATETIME2, mysql.MYSQL_TYPE_TIME2:
 				columns = append(columns, fmt.Sprint("'", row[i], "'"))
 			case mysql.MYSQL_TYPE_VARCHAR, mysql.MYSQL_TYPE_VAR_STRING, mysql.MYSQL_TYPE_STRING:
-				switch row[i].(type) {
+				switch v := row[i].(type) {
 				case string:
 					if common.Config.Global.HexString {
-						columns = append(columns, fmt.Sprintf(`X'%s'`, hex.EncodeToString(row[i].([]byte))))
+						columns = append(columns, fmt.Sprintf(`X'%s'`, hex.EncodeToString([]byte(v))))
 					} else {
 						// strconv.Quote will escape unicode \u0100
 						// escape function maybe not correct with multi byte charset
-						// columns = append(columns, strconv.Quote(row[i].(string)))
-						columns = append(columns, fmt.Sprintf(`"%s"`, escape(row[i].(string))))
+						// columns = append(columns, strconv.Quote(v))
+						columns = append(columns, fmt.Sprintf(`"%s"`, escape(v)))
+					}
+				case []byte:
+					if common.Config.Global.HexString {
+						columns = append(columns, fmt.Sprintf(`X'%s'`, hex.EncodeToString(v)))
+					} else {
+						columns = append(columns, fmt.Sprintf(`"%s"`, escape(string(v))))
 					}
 				case int, int64, int32, int16, int8, uint64, uint32, uint16, uint8:
 					// SET ENUM
-					columns = append(columns, fmt.Sprint(row[i]))
+					columns = append(columns, fmt.Sprint(v))
 				default:
-					columns = append(columns, fmt.Sprintf(`'%s'`, fmt.Sprint(row[i])))
+					columns = append(columns, fmt.Sprintf(`'%s'`, fmt.Sprint(v)))
 				}
 
+			// MySQL 8.0/8.4: ENUM and SET types - stored as integers in binlog
+			case mysql.MYSQL_TYPE_ENUM:
+				columns = append(columns, fmt.Sprint(row[i]))
+			case mysql.MYSQL_TYPE_SET:
+				columns = append(columns, fmt.Sprint(row[i]))
+
 			case mysql.MYSQL_TYPE_JSON:
-				columns = append(columns, fmt.Sprintf(`'%s'`, row[i].([]byte)))
+				// Safe type assertion with fallback
+				switch v := row[i].(type) {
+				case []byte:
+					columns = append(columns, fmt.Sprintf(`'%s'`, v))
+				case string:
+					columns = append(columns, fmt.Sprintf(`'%s'`, v))
+				default:
+					columns = append(columns, fmt.Sprintf(`'%s'`, fmt.Sprint(v)))
+				}
 			case mysql.MYSQL_TYPE_BIT:
-				columns = append(columns, fmt.Sprintf(`%d`, row[i].(int64)))
+				// Safe type assertion with fallback
+				switch v := row[i].(type) {
+				case int64:
+					columns = append(columns, fmt.Sprintf(`%d`, v))
+				case int:
+					columns = append(columns, fmt.Sprintf(`%d`, v))
+				case uint64:
+					columns = append(columns, fmt.Sprintf(`%d`, v))
+				default:
+					columns = append(columns, fmt.Sprintf(`'%s'`, fmt.Sprint(v)))
+				}
+
+			// MySQL 8.0/8.4: GEOMETRY and Spatial types - stored as binary WKB format
+			// Supports: GEOMETRY, POINT, LINESTRING, POLYGON, MULTIPOINT,
+			//           MULTILINESTRING, MULTIPOLYGON, GEOMETRYCOLLECTION
+			case mysql.MYSQL_TYPE_GEOMETRY:
+				// Safe type assertion with fallback
+				switch v := row[i].(type) {
+				case []byte:
+					columns = append(columns, fmt.Sprintf(`ST_GeomFromWKB(X'%s')`, hex.EncodeToString(v)))
+				default:
+					columns = append(columns, fmt.Sprintf(`ST_GeomFromWKB(X'%s')`, hex.EncodeToString([]byte(fmt.Sprint(v)))))
+				}
+
+			// MySQL 9.0: VECTOR type - stored as binary format
+			// Supports: VECTOR data type for AI/ML applications
+			case mysql.MYSQL_TYPE_VECTOR:
+				// Safe type assertion with fallback
+				switch v := row[i].(type) {
+				case []byte:
+					columns = append(columns, fmt.Sprintf(`STRING_TO_VECTOR(X'%s')`, hex.EncodeToString(v)))
+				default:
+					columns = append(columns, fmt.Sprintf(`STRING_TO_VECTOR(X'%s')`, hex.EncodeToString([]byte(fmt.Sprint(v)))))
+				}
+
+			// MySQL 8.0/8.4: BLOB types - stored as binary data
+			case mysql.MYSQL_TYPE_TINY_BLOB, mysql.MYSQL_TYPE_BLOB, mysql.MYSQL_TYPE_MEDIUM_BLOB, mysql.MYSQL_TYPE_LONG_BLOB:
+				// Safe type assertion with fallback
+				switch v := row[i].(type) {
+				case []byte:
+					columns = append(columns, fmt.Sprintf(`X'%s'`, hex.EncodeToString(v)))
+				default:
+					columns = append(columns, fmt.Sprintf(`X'%s'`, hex.EncodeToString([]byte(fmt.Sprint(v)))))
+				}
+
 			default:
-				// mysql.MYSQL_TYPE_TINY_BLOB, mysql.MYSQL_TYPE_BLOB, mysql.MYSQL_TYPE_MEDIUM_BLOB, mysql.MYSQL_TYPE_LONG_BLOB
-				// mysql.MYSQL_TYPE_GEOMETRY
-				columns = append(columns, fmt.Sprintf(`X'%s'`, hex.EncodeToString(row[i].([]byte))))
+				// Safe type assertion with fallback for unknown types
+				switch v := row[i].(type) {
+				case []byte:
+					columns = append(columns, fmt.Sprintf(`X'%s'`, hex.EncodeToString(v)))
+				default:
+					columns = append(columns, fmt.Sprintf(`'%s'`, fmt.Sprint(v)))
+				}
 			}
 		}
 		values = append(values, columns)
