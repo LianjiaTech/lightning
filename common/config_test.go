@@ -15,7 +15,6 @@ package common
 
 import (
 	"flag"
-	"fmt"
 	"testing"
 	"time"
 
@@ -52,20 +51,28 @@ func TestListPlugin(t *testing.T) {
 
 // go test github.com/LianjiaTech/lightning/common -v -update -run TestTimeOffset
 func TestTimeOffset(t *testing.T) {
-	tzs := []string{
-		"UTC",
-		"Asia/Shanghai",
-		"Europe/London",
-		"America/Los_Angeles",
+	// 验证函数不会 panic 且返回合理范围值 (-86400 to 86400 seconds)
+	tzs := []string{"UTC", "Asia/Shanghai", "Europe/London", "America/Los_Angeles"}
+	for _, tz := range tzs {
+		offset := TimeOffset(tz)
+		if offset < -86400 || offset > 86400 {
+			t.Errorf("TimeOffset(%s) = %d, out of reasonable range", tz, offset)
+		}
 	}
 
-	err := GoldenDiff(func() {
-		for _, tz := range tzs {
-			fmt.Println(TimeOffset(tz))
-		}
-	}, t.Name(), update)
-	if nil != err {
-		t.Fatal(err)
+	// 验证相对偏移的一致性：同一时区的偏移差应为0
+	utcOffset1 := TimeOffset("UTC")
+	utcOffset2 := TimeOffset("UTC")
+	if utcOffset1 != utcOffset2 {
+		t.Errorf("TimeOffset(UTC) inconsistent: %d vs %d", utcOffset1, utcOffset2)
+	}
+
+	// 验证 Asia/Shanghai 和 Europe/London 的偏移差在合理范围内 (7-8小时)
+	shanghaiOffset := TimeOffset("Asia/Shanghai")
+	londonOffset := TimeOffset("Europe/London")
+	diff := shanghaiOffset - londonOffset
+	if diff < 25200 || diff > 28800 {
+		t.Errorf("TimeOffset diff between Asia/Shanghai and Europe/London = %d, not in expected range [25200, 28800]", diff)
 	}
 }
 

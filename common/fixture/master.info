@@ -6,6 +6,10 @@ master_log_file: binlog.000007
 master_log_pos: 4
 executed_gtid_set: 376b1ae7-39a1-11e9-a253-14187759814e:1, 3b0075c9-39a1-11e9-a250-f86eee9113c6:1-98
 auto_position: false
-seconds_behind_master: 84
+until_log_file: ""
+until_log_pos: 0
+until_before_gtids: ""
+until_after_gtids: ""
+seconds_behind_master: 105
 server-id: 33061
 server-type: mysql

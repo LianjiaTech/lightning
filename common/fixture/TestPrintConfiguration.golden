@@ -38,5 +38,6 @@ rebuild:
   ignore-columns: []
   replace: false
   sleep-interval: 0s
+  foreach-time: false
   lua-script: ""
   without-db-name: false

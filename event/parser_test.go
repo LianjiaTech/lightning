@@ -26,7 +26,7 @@ func init() {
 	rebuild.LoadSchemaInfo()
 }
 
-func ExampleBinlogFileValidator() {
+func ExampleCheckBinlogFileHeader() {
 	headers := [][]byte{
 		{0xfe, 'b', 'i', 'n'}, // not encrypted
 		{0xfd, 'b', 'i', 'n'}, // encrypted
@@ -55,13 +55,19 @@ func TestBinlogFileParser(t *testing.T) {
 func TestBinlogStreamParser(t *testing.T) {
 	masterInfoOrg := common.Config.MySQL.MasterInfo
 	stopPositionOrg := common.Config.Filters.StopPosition
+	replicateFromCurrentOrg := common.Config.MySQL.ReplicateFromCurrentPosition
 	common.Config.MySQL.MasterInfo = common.DevPath + "/etc/master.info"
 	common.Config.Filters.StopPosition = 190
+	// 从当前位点开始，避免 binlog 文件不存在的问题
+	common.Config.MySQL.ReplicateFromCurrentPosition = true
 	common.LoadMasterInfo()
+	// 清空 binlog 文件名，强制从当前位点开始
+	common.MasterInfo.MasterLogFile = ""
 	err := BinlogStreamParser()
 	if err != nil {
 		t.Error(err.Error())
 	}
 	common.Config.MySQL.MasterInfo = masterInfoOrg
 	common.Config.Filters.StopPosition = stopPositionOrg
+	common.Config.MySQL.ReplicateFromCurrentPosition = replicateFromCurrentOrg
 }
