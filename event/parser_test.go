@@ -14,6 +14,7 @@
 package event
 
 import (
+	"database/sql"
 	"fmt"
 	"io"
 	"os"
@@ -126,18 +127,49 @@ func TestBinlogStreamParser(t *testing.T) {
 	masterInfoOrg := common.Config.MySQL.MasterInfo
 	stopPositionOrg := common.Config.Filters.StopPosition
 	replicateFromCurrentOrg := common.Config.MySQL.ReplicateFromCurrentPosition
+	defer func() {
+		common.Config.MySQL.MasterInfo = masterInfoOrg
+		common.Config.Filters.StopPosition = stopPositionOrg
+		common.Config.MySQL.ReplicateFromCurrentPosition = replicateFromCurrentOrg
+	}()
 	common.Config.MySQL.MasterInfo = common.DevPath + "/etc/master.info"
-	common.Config.Filters.StopPosition = 190
-	// 从当前位点开始，避免 binlog 文件不存在的问题
-	common.Config.MySQL.ReplicateFromCurrentPosition = true
 	common.LoadMasterInfo()
-	// 清空 binlog 文件名，强制从当前位点开始
-	common.MasterInfo.MasterLogFile = ""
-	err := BinlogStreamParser()
-	if err != nil {
+
+	// Capture the current position, then generate an event after it, so the
+	// test is deterministic even when the server is otherwise idle (a stream
+	// started at the current end would otherwise block until ReadTimeout).
+	status := common.ShowMasterStatus(common.MasterInfo)
+	if status.MasterLogFile == "" {
+		t.Skip("skip stream test, cannot get master status")
+	}
+	generateBinlogEvent(t)
+
+	common.MasterInfo.MasterLogFile = status.MasterLogFile
+	common.MasterInfo.MasterLogPos = status.MasterLogPos
+	common.Config.MySQL.ReplicateFromCurrentPosition = false
+	// the generated event has LogPos > this, which ends the stream
+	common.Config.Filters.StopPosition = uint32(status.MasterLogPos)
+
+	if err := BinlogStreamParser(); err != nil {
 		t.Error(err.Error())
 	}
-	common.Config.MySQL.MasterInfo = masterInfoOrg
-	common.Config.Filters.StopPosition = stopPositionOrg
-	common.Config.MySQL.ReplicateFromCurrentPosition = replicateFromCurrentOrg
+}
+
+// generateBinlogEvent writes a row so the master produces a binlog event.
+func generateBinlogEvent(t *testing.T) {
+	t.Helper()
+	dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/test",
+		common.MasterInfo.MasterUser, common.MasterInfo.MasterPassword,
+		common.MasterInfo.MasterHost, common.MasterInfo.MasterPort)
+	db, err := sql.Open("mysql", dsn)
+	if err != nil {
+		t.Skipf("skip stream test, open db: %v", err)
+	}
+	defer db.Close()
+	if _, err := db.Exec("CREATE TABLE IF NOT EXISTS test_binlog_stream (id INT PRIMARY KEY AUTO_INCREMENT, v INT)"); err != nil {
+		t.Skipf("skip stream test, create table: %v", err)
+	}
+	if _, err := db.Exec("INSERT INTO test_binlog_stream (v) VALUES (1)"); err != nil {
+		t.Skipf("skip stream test, insert: %v", err)
+	}
 }
