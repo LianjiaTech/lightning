@@ -171,7 +171,8 @@ var MasterInfo = ChangeMaster{
 	ServerType: "mysql",
 }
 
-// ShowMasterStatus execute `show master status`, get master info
+// ShowMasterStatus execute `show binary log status` (MySQL 8.4+/9.x) with a
+// fallback to `show master status` (older versions), get master info
 func ShowMasterStatus(masterInfo ChangeMaster) ChangeMaster {
 	db, err := sql.Open("mysql",
 		fmt.Sprintf(`%s:%s@tcp(%s:%d)/`,
@@ -186,10 +187,15 @@ func ShowMasterStatus(masterInfo ChangeMaster) ChangeMaster {
 	}
 	defer db.Close()
 
-	rows, err := db.Query("show master status")
+	// MySQL 8.4 deprecated and MySQL 9.x removed `SHOW MASTER STATUS`
+	// in favor of `SHOW BINARY LOG STATUS`.
+	rows, err := db.Query("show binary log status")
 	if err != nil {
-		Log.Error(err.Error())
-		return masterInfo
+		rows, err = db.Query("show master status")
+		if err != nil {
+			Log.Error(err.Error())
+			return masterInfo
+		}
 	}
 
 	columns, err := rows.Columns()
