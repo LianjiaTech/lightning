@@ -3,28 +3,10 @@ SET GLOBAL BINLOG_FORMAT=ROW;
 SET GLOBAL BINLOG_ROW_IMAGE=FULL;
 SET GLOBAL ENFORCE_GTID_CONSISTENCY = ON;
 
--- 根据当前 GTID_MODE 状态逐步启用 GTID
--- MySQL 8.0+ 默认 GTID_MODE=ON，MySQL 5.7 默认 GTID_MODE=OFF
-DELIMITER //
-DROP PROCEDURE IF EXISTS enable_gtid//
-CREATE PROCEDURE enable_gtid()
-BEGIN
-    DECLARE current_mode VARCHAR(32);
-    SELECT @@GLOBAL.GTID_MODE INTO current_mode;
-    IF current_mode = 'OFF' THEN
-        SET GLOBAL GTID_MODE=OFF_PERMISSIVE;
-        SET GLOBAL GTID_MODE=ON_PERMISSIVE;
-        SET GLOBAL GTID_MODE=ON;
-    ELSEIF current_mode = 'OFF_PERMISSIVE' THEN
-        SET GLOBAL GTID_MODE=ON_PERMISSIVE;
-        SET GLOBAL GTID_MODE=ON;
-    ELSEIF current_mode = 'ON_PERMISSIVE' THEN
-        SET GLOBAL GTID_MODE=ON;
-    END IF;
-END//
-DELIMITER ;
-CALL enable_gtid();
-DROP PROCEDURE IF EXISTS enable_gtid;
+-- Do not try to switch GTID_MODE here: it cannot be set inside a stored
+-- procedure (ERROR 1838), and MySQL 8.0 defaults to OFF while 8.4+ defaults
+-- to ON. The test suite uses position-based replication, so GTID mode is not
+-- required. Enable it via server options if you need GTID-based sync.
 
 SET GLOBAL binlog_rows_query_log_events=on;
 
