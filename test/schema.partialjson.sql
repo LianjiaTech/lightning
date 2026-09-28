@@ -1,0 +1,8 @@
+CREATE DATABASE IF NOT EXISTS test;
+USE test;
+
+CREATE TABLE `t_json` (
+  `id` int NOT NULL,
+  `doc` json DEFAULT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

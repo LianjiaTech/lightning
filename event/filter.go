@@ -203,7 +203,7 @@ func FilterQueryType(event *replication.BinlogEvent) bool {
 			if strings.ToLower(t) == "insert" {
 				do = true
 			}
-		case replication.UPDATE_ROWS_EVENTv2, replication.UPDATE_ROWS_EVENTv1, replication.UPDATE_ROWS_EVENTv0:
+		case replication.UPDATE_ROWS_EVENTv2, replication.UPDATE_ROWS_EVENTv1, replication.UPDATE_ROWS_EVENTv0, replication.PARTIAL_UPDATE_ROWS_EVENT:
 			if strings.ToLower(t) == "update" {
 				do = true
 			}

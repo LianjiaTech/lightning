@@ -382,6 +382,8 @@ func TypeSwitcher(event *replication.BinlogEvent) {
 		rebuild.InsertRebuild(event)
 	case replication.UPDATE_ROWS_EVENTv0, replication.UPDATE_ROWS_EVENTv1, replication.UPDATE_ROWS_EVENTv2:
 		rebuild.UpdateRebuild(event)
+	case replication.PARTIAL_UPDATE_ROWS_EVENT:
+		rebuild.UpdateRebuild(event)
 	case replication.DELETE_ROWS_EVENTv0, replication.DELETE_ROWS_EVENTv1, replication.DELETE_ROWS_EVENTv2:
 		rebuild.DeleteRebuild(event)
 	case replication.QUERY_EVENT:
@@ -444,6 +446,7 @@ func sleepInterval(event *replication.BinlogEvent) {
 		switch event.Header.EventType {
 		case replication.WRITE_ROWS_EVENTv0, replication.WRITE_ROWS_EVENTv1, replication.WRITE_ROWS_EVENTv2,
 			replication.UPDATE_ROWS_EVENTv0, replication.UPDATE_ROWS_EVENTv1, replication.UPDATE_ROWS_EVENTv2,
+			replication.PARTIAL_UPDATE_ROWS_EVENT,
 			replication.DELETE_ROWS_EVENTv0, replication.DELETE_ROWS_EVENTv1, replication.DELETE_ROWS_EVENTv2:
 			fmt.Printf("SELECT sleep(%f);\n", interval)
 		case replication.QUERY_EVENT:

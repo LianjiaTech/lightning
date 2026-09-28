@@ -105,6 +105,7 @@ func RowEventTable(event *replication.BinlogEvent) string {
 	switch event.Header.EventType {
 	case replication.WRITE_ROWS_EVENTv0, replication.WRITE_ROWS_EVENTv1, replication.WRITE_ROWS_EVENTv2,
 		replication.UPDATE_ROWS_EVENTv0, replication.UPDATE_ROWS_EVENTv1, replication.UPDATE_ROWS_EVENTv2,
+		replication.PARTIAL_UPDATE_ROWS_EVENT,
 		replication.DELETE_ROWS_EVENTv0, replication.DELETE_ROWS_EVENTv1, replication.DELETE_ROWS_EVENTv2:
 		return fmt.Sprintf("`%s`.`%s`",
 			string(event.Event.(*replication.RowsEvent).Table.Schema),
@@ -115,6 +116,7 @@ func RowEventTable(event *replication.BinlogEvent) string {
 
 // BuildValues build values list
 func BuildValues(event *replication.RowsEvent) [][]string {
+	mergePartialJSON(event.Rows)
 	table := fmt.Sprintf("`%s`.`%s`", string(event.Table.Schema), event.Table.Table)
 	var values [][]string
 	for _, row := range event.Rows {
