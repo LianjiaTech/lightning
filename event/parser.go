@@ -378,6 +378,9 @@ func TypeSwitcher(event *replication.BinlogEvent) {
 	switch event.Header.EventType {
 	case replication.GTID_EVENT:
 		rebuild.GTIDRebuild(event.Event.(*replication.GTIDEvent))
+	case replication.GTID_TAGGED_LOG_EVENT:
+		tagged := event.Event.(*replication.GtidTaggedLogEvent)
+		rebuild.GTIDRebuild(&tagged.GTIDEvent)
 	case replication.WRITE_ROWS_EVENTv0, replication.WRITE_ROWS_EVENTv1, replication.WRITE_ROWS_EVENTv2:
 		rebuild.InsertRebuild(event)
 	case replication.UPDATE_ROWS_EVENTv0, replication.UPDATE_ROWS_EVENTv1, replication.UPDATE_ROWS_EVENTv2:

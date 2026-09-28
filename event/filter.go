@@ -140,6 +140,13 @@ func FilterIncludeGTIDs(event *replication.BinlogEvent) bool {
 			Ending = true
 		}
 		FollowGTID = do
+	case replication.GTID_TAGGED_LOG_EVENT:
+		tagged := event.Event.(*replication.GtidTaggedLogEvent)
+		do = InGTIDSet(tagged.SID, tagged.GNO, common.Config.Filters.IncludeGTIDSet)
+		if FollowGTID && !do {
+			Ending = true
+		}
+		FollowGTID = do
 	default:
 		do = FollowGTID
 	}
@@ -155,6 +162,10 @@ func FilterExcludeGTIDs(event *replication.BinlogEvent) bool {
 	switch event.Header.EventType {
 	case replication.GTID_EVENT:
 		do = !InGTIDSet(event.Event.(*replication.GTIDEvent).SID, event.Event.(*replication.GTIDEvent).GNO, common.Config.Filters.ExcludeGTIDSet)
+		FollowGTID = do
+	case replication.GTID_TAGGED_LOG_EVENT:
+		tagged := event.Event.(*replication.GtidTaggedLogEvent)
+		do = !InGTIDSet(tagged.SID, tagged.GNO, common.Config.Filters.ExcludeGTIDSet)
 		FollowGTID = do
 	default:
 		do = FollowGTID
@@ -242,6 +253,10 @@ func UpdateMasterInfo(event *replication.BinlogEvent) {
 		if executedGTIDSet != "<nil>" {
 			common.MasterInfo.ExecutedGTIDSet = executedGTIDSet
 		}
+	case replication.XA_PREPARE_LOG_EVENT:
+		// XA transaction prepare phase (MySQL 8.0.30+, decoded by go-mysql as
+		// GenericEvent); only track the replication position.
+		common.MasterInfo.MasterLogPos = int64(event.Header.LogPos)
 	default:
 	}
 

@@ -274,7 +274,11 @@ func BuildValues(event *replication.RowsEvent) [][]string {
 // GTIDRebuild ...
 func GTIDRebuild(event *replication.GTIDEvent) {
 	serverID, _ := uuid.FromBytes(event.SID)
-	common.Verbose("-- [DEBUG] GTID_NEXT: %s:%d, LastCommitted: %d, SequenceNumber: %d, CommitFlag: %d\n", serverID, event.GNO, event.LastCommitted, event.SequenceNumber, event.CommitFlag)
+	tag := ""
+	if s := event.Tag.String(); s != "" {
+		tag = fmt.Sprintf(", Tag: %s", s)
+	}
+	common.Verbose("-- [DEBUG] GTID_NEXT: %s:%d%s, LastCommitted: %d, SequenceNumber: %d, CommitFlag: %d\n", serverID, event.GNO, tag, event.LastCommitted, event.SequenceNumber, event.CommitFlag)
 }
 
 // EventHeaderRebuild ...
