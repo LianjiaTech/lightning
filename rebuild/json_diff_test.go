@@ -77,7 +77,7 @@ func TestApplyJSONDiff(t *testing.T) {
 
 func TestMergePartialJSON(t *testing.T) {
 	rows := [][]any{
-		{int32(1), `{"a":1,"b":{"c":[1,2,3],"d":"x"}}`}, // before
+		{int32(1), `{"a":1,"b":{"c":[1,2,3],"d":"x"}}`},                                                            // before
 		{int32(1), &replication.JsonDiff{Op: replication.JsonDiffOperationReplace, Path: "$.b.c[1]", Value: "99"}}, // after
 	}
 	mergePartialJSON(rows)

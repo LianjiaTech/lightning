@@ -112,7 +112,7 @@ func TestBuildValuesDataTypes(t *testing.T) {
 					{[]byte{0x00, 0x00, 0x40, 0x00, 0x00, 0x00, 0x40, 0x00, 0x00, 0x00, 0x40, 0x00}}, // VECTOR as binary float array
 				},
 			},
-			expectedSQL: []string{"STRING_TO_VECTOR(X'000040000000400000004000')"},
+			expectedSQL: []string{"X'000040000000400000004000'"},
 		},
 		{
 			name: "BLOB types",

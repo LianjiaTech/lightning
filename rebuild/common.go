@@ -223,27 +223,34 @@ func BuildValues(event *replication.RowsEvent) [][]string {
 					columns = append(columns, fmt.Sprintf(`'%s'`, fmt.Sprint(v)))
 				}
 
-			// MySQL 8.0/8.4: GEOMETRY and Spatial types - stored as binary WKB format
+			// MySQL 8.0/8.4: GEOMETRY and Spatial types - stored as binary: 4-byte
+			// little-endian SRID (8.0+) followed by WKB
 			// Supports: GEOMETRY, POINT, LINESTRING, POLYGON, MULTIPOINT,
 			//           MULTILINESTRING, MULTIPOLYGON, GEOMETRYCOLLECTION
 			case mysql.MYSQL_TYPE_GEOMETRY:
-				// Safe type assertion with fallback
+				var b []byte
 				switch v := row[i].(type) {
 				case []byte:
-					columns = append(columns, fmt.Sprintf(`ST_GeomFromWKB(X'%s')`, hex.EncodeToString(v)))
+					b = v
 				default:
-					columns = append(columns, fmt.Sprintf(`ST_GeomFromWKB(X'%s')`, hex.EncodeToString([]byte(fmt.Sprint(v)))))
+					b = []byte(fmt.Sprint(v))
+				}
+				wkb, srid, hasSRID := splitGeometry(b)
+				if hasSRID {
+					columns = append(columns, fmt.Sprintf(`ST_GeomFromWKB(X'%s', %d)`, hex.EncodeToString(wkb), srid))
+				} else {
+					columns = append(columns, fmt.Sprintf(`ST_GeomFromWKB(X'%s')`, hex.EncodeToString(wkb)))
 				}
 
-			// MySQL 9.0: VECTOR type - stored as binary format
-			// Supports: VECTOR data type for AI/ML applications
+			// MySQL 9.0: VECTOR type - little-endian float32 array without any prefix;
+			// a binary literal is accepted directly when inserting into a VECTOR column
 			case mysql.MYSQL_TYPE_VECTOR:
 				// Safe type assertion with fallback
 				switch v := row[i].(type) {
 				case []byte:
-					columns = append(columns, fmt.Sprintf(`STRING_TO_VECTOR(X'%s')`, hex.EncodeToString(v)))
+					columns = append(columns, fmt.Sprintf(`X'%s'`, hex.EncodeToString(v)))
 				default:
-					columns = append(columns, fmt.Sprintf(`STRING_TO_VECTOR(X'%s')`, hex.EncodeToString([]byte(fmt.Sprint(v)))))
+					columns = append(columns, fmt.Sprintf(`X'%s'`, hex.EncodeToString([]byte(fmt.Sprint(v)))))
 				}
 
 			// MySQL 8.0/8.4: BLOB types - stored as binary data
