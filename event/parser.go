@@ -357,6 +357,12 @@ func handleBinlogEvent(event *replication.BinlogEvent, updateMaster bool) {
 		}
 		return
 	}
+	// DDL changes the in-memory schema globally, so keep it in sync even when
+	// the DDL event itself is filtered out (e.g. by a table filter).
+	if event.Header.EventType == replication.QUERY_EVENT {
+		query := event.Event.(*replication.QueryEvent)
+		rebuild.UpdateSchemaFromQuery(string(query.Schema), string(query.Query))
+	}
 	if BinlogFilter(event) {
 		TypeSwitcher(event)
 	} else {

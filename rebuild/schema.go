@@ -209,7 +209,11 @@ func schemaAppend(database, sql string) error {
 			if node.Table.Schema.String() == "" {
 				node.Table.Schema = ast.NewCIStr(database)
 			}
-			Schemas[fmt.Sprintf("`%s`.`%s`", database, node.Table.Name)] = node
+			keySchema := node.Table.Schema.String()
+			if keySchema == "" {
+				keySchema = database
+			}
+			Schemas[fmt.Sprintf("`%s`.`%s`", keySchema, node.Table.Name)] = node
 		case *ast.UseStmt:
 			database = node.DBName
 		}
@@ -260,6 +264,14 @@ func buildPrimaryKeys() {
 			if con.Tp == ast.ConstraintPrimaryKey {
 				for _, col := range con.Keys {
 					PrimaryKeys[table] = append(PrimaryKeys[table], fmt.Sprintf("`%s`", col.Column.String()))
+				}
+			}
+		}
+		// inline column primary key, e.g. `id` int primary key
+		for _, col := range schema.Cols {
+			for _, opt := range col.Options {
+				if opt.Tp == ast.ColumnOptionPrimaryKey {
+					PrimaryKeys[table] = append(PrimaryKeys[table], fmt.Sprintf("`%s`", col.Name.Name.String()))
 				}
 			}
 		}
