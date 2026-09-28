@@ -15,6 +15,9 @@ package event
 
 import (
 	"fmt"
+	"io"
+	"os"
+	"strings"
 	"testing"
 
 	"github.com/LianjiaTech/lightning/common"
@@ -49,6 +52,47 @@ func TestBinlogFileParser(t *testing.T) {
 	err := BinlogFileParser([]string{common.DevPath + "/test/binlog.000002"})
 	if err != nil {
 		t.Error(err.Error())
+	}
+}
+
+// TestBinlogFileParserCompressed verifies that a compressed transaction
+// (binlog_transaction_compression=ON, MySQL 8.0.20+) delivered as a single
+// TRANSACTION_PAYLOAD_EVENT is expanded and every inner row event is rebuilt.
+func TestBinlogFileParserCompressed(t *testing.T) {
+	schemaOrg := common.Config.MySQL.SchemaFile
+	pluginOrg := common.Config.Rebuild.Plugin
+	common.Config.MySQL.SchemaFile = common.DevPath + "/test/schema.compressed.sql"
+	common.Config.Rebuild.Plugin = "sql"
+	rebuild.LoadSchemaInfo()
+
+	old := os.Stdout
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err.Error())
+	}
+	os.Stdout = w
+
+	parseErr := BinlogFileParser([]string{common.DevPath + "/test/binlog.compressed"})
+
+	w.Close()
+	os.Stdout = old
+	out, _ := io.ReadAll(r)
+
+	common.Config.MySQL.SchemaFile = schemaOrg
+	common.Config.Rebuild.Plugin = pluginOrg
+
+	if parseErr != nil {
+		t.Fatal(parseErr.Error())
+	}
+	for _, want := range []string{
+		"INSERT INTO `test`.`t_compress`  VALUES (1, \"compressed-a\")",
+		"INSERT INTO `test`.`t_compress`  VALUES (2, \"compressed-b\")",
+		"UPDATE `test`.`t_compress` SET `id` = 1, `v` = \"compressed-upd\" WHERE `id` = 1 LIMIT 1",
+		"DELETE FROM `test`.`t_compress` WHERE `id` = 2 LIMIT 1",
+	} {
+		if !strings.Contains(string(out), want) {
+			t.Errorf("compressed binlog output missing: %q\n--- got ---\n%s", want, out)
+		}
 	}
 }
 

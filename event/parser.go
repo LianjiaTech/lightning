@@ -237,16 +237,7 @@ func BinlogFileParser(files []string) error {
 			if err != nil {
 				return errors.Trace(err)
 			}
-			if BinlogFilter(event) {
-				TypeSwitcher(event)
-			} else {
-				common.VerboseVerbose("-- [DEBUG] BinlogFilter ignore, EventType: %s, Position: %d, ServerID: %d, TimeStamp: %d",
-					event.Header.EventType.String(),
-					event.Header.LogPos,
-					event.Header.ServerID,
-					event.Header.Timestamp,
-				)
-			}
+			handleBinlogEvent(event, false)
 			if Ending {
 				break
 			}
@@ -332,17 +323,7 @@ func BinlogStreamParser() error {
 		if err != nil {
 			return errors.Trace(err)
 		}
-		if BinlogFilter(event) {
-			TypeSwitcher(event)
-		} else {
-			common.VerboseVerbose("-- [DEBUG] BinlogFilter ignore, EventType: %s, Position: %d, ServerID: %d, TimeStamp: %d",
-				event.Header.EventType.String(),
-				event.Header.LogPos,
-				event.Header.ServerID,
-				event.Header.Timestamp,
-			)
-		}
-		UpdateMasterInfo(event)
+		handleBinlogEvent(event, true)
 		if Ending {
 			break
 		}
@@ -360,6 +341,35 @@ func getEvent(streamer *replication.BinlogStreamer, readTimeout time.Duration) (
 		defer cancel()
 	}
 	return streamer.GetEvent(ctx)
+}
+
+// handleBinlogEvent filters and dispatches a single binlog event.
+// MySQL 8.0.20+ with binlog_transaction_compression=ON wraps a whole
+// transaction into one TRANSACTION_PAYLOAD_EVENT, so expand it and dispatch
+// each inner event individually. updateMaster controls whether to track the
+// replication position (stream parser only).
+func handleBinlogEvent(event *replication.BinlogEvent, updateMaster bool) {
+	if event.Header.EventType == replication.TRANSACTION_PAYLOAD_EVENT {
+		if payload, ok := event.Event.(*replication.TransactionPayloadEvent); ok {
+			for _, inner := range payload.Events {
+				handleBinlogEvent(inner, updateMaster)
+			}
+		}
+		return
+	}
+	if BinlogFilter(event) {
+		TypeSwitcher(event)
+	} else {
+		common.VerboseVerbose("-- [DEBUG] BinlogFilter ignore, EventType: %s, Position: %d, ServerID: %d, TimeStamp: %d",
+			event.Header.EventType.String(),
+			event.Header.LogPos,
+			event.Header.ServerID,
+			event.Header.Timestamp,
+		)
+	}
+	if updateMaster {
+		UpdateMasterInfo(event)
+	}
 }
 
 // TypeSwitcher event router by type
