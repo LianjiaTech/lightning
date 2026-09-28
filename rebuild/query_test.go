@@ -26,6 +26,11 @@ func TestQueryRollback(t *testing.T) {
 	sqls := []string{
 		`CREATE TABLE tb (a int)`,
 		`create database db`,
+		`ALTER TABLE tb ADD COLUMN b int`,
+		`ALTER TABLE tb RENAME COLUMN a TO c`,
+		`ALTER TABLE tb ADD PRIMARY KEY (a)`,
+		`ALTER TABLE tb ADD INDEX idx_a (a)`,
+		`ALTER TABLE tb DROP COLUMN a`,
 		// "create index on tb idx_col (`col`)",
 	}
 

@@ -149,8 +149,8 @@ func QueryRollback(sql string) {
 				CreateIndexRollback(node)
 			case *ast.CreateViewStmt:
 				CreateViewRollback(node)
-			// case *ast.AlterTableStmt:
-			// TODO: ALTER TABLE tb ADD col int;
+			case *ast.AlterTableStmt:
+				AlterTableRollback(node)
 			case *ast.BeginStmt:
 				common.Verbose("-- [DEBUG] BEGIN;")
 			default:
@@ -192,6 +192,74 @@ func CreateViewRollback(stmt *ast.CreateViewStmt) {
 	} else {
 		fmt.Printf("DROP VIEW IF EXISTS `%s`.`%s`;\n", stmt.ViewName.Schema, stmt.ViewName.Name)
 	}
+}
+
+// AlterTableRollback rollbacks the reversible parts of an ALTER TABLE statement.
+// Operations that would need the old definition (DROP/MODIFY/CHANGE COLUMN,
+// DROP INDEX/PRIMARY KEY/FOREIGN KEY) cannot be rolled back from the binlog
+// alone and are skipped with a debug message.
+func AlterTableRollback(stmt *ast.AlterTableStmt) {
+	table := formatTableName(stmt.Table)
+	for _, spec := range stmt.Specs {
+		switch spec.Tp {
+		case ast.AlterTableAddColumns:
+			for _, col := range spec.NewColumns {
+				fmt.Printf("ALTER TABLE %s DROP COLUMN `%s`;\n", table, col.Name.Name.String())
+			}
+			for _, con := range spec.NewConstraints {
+				if sql := dropConstraintRollback(table, con); sql != "" {
+					fmt.Println(sql)
+				} else {
+					common.VerboseVerbose("-- [DEBUG] can't rollback ALTER TABLE %s ADD constraint", table)
+				}
+			}
+		case ast.AlterTableAddConstraint:
+			if spec.Constraint != nil {
+				if sql := dropConstraintRollback(table, spec.Constraint); sql != "" {
+					fmt.Println(sql)
+				} else {
+					common.VerboseVerbose("-- [DEBUG] can't rollback ALTER TABLE %s ADD constraint", table)
+				}
+			}
+		case ast.AlterTableRenameColumn:
+			if spec.OldColumnName != nil && spec.NewColumnName != nil {
+				fmt.Printf("ALTER TABLE %s RENAME COLUMN `%s` TO `%s`;\n",
+					table, spec.NewColumnName.Name.String(), spec.OldColumnName.Name.String())
+			}
+		case ast.AlterTableRenameTable:
+			if spec.NewTable != nil {
+				fmt.Printf("ALTER TABLE %s RENAME TO %s;\n", formatTableName(spec.NewTable), table)
+			}
+		case ast.AlterTableDropColumn, ast.AlterTableModifyColumn, ast.AlterTableChangeColumn,
+			ast.AlterTableDropPrimaryKey, ast.AlterTableDropIndex, ast.AlterTableDropForeignKey:
+			common.VerboseVerbose("-- [DEBUG] can't rollback ALTER TABLE %s, spec type: %d", table, spec.Tp)
+		}
+	}
+}
+
+func formatTableName(t *ast.TableName) string {
+	if t.Schema.String() == "" {
+		return fmt.Sprintf("`%s`", t.Name)
+	}
+	return fmt.Sprintf("`%s`.`%s`", t.Schema, t.Name)
+}
+
+func dropConstraintRollback(table string, con *ast.Constraint) string {
+	switch con.Tp {
+	case ast.ConstraintPrimaryKey:
+		return fmt.Sprintf("ALTER TABLE %s DROP PRIMARY KEY;", table)
+	case ast.ConstraintKey, ast.ConstraintIndex, ast.ConstraintUniq, ast.ConstraintUniqKey, ast.ConstraintUniqIndex:
+		if con.Name == "" {
+			return ""
+		}
+		return fmt.Sprintf("ALTER TABLE %s DROP INDEX `%s`;", table, con.Name)
+	case ast.ConstraintForeignKey:
+		if con.Name == "" {
+			return ""
+		}
+		return fmt.Sprintf("ALTER TABLE %s DROP FOREIGN KEY `%s`;", table, con.Name)
+	}
+	return ""
 }
 
 // QueryStat ...
