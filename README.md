@@ -92,7 +92,8 @@ lightning 使用 YAML 格式的配置文件。使用 `-config` 参数指定配�
 * BINLOG_FORMAT = ROW
 * 参数 BINLOG_ROW_IMAGE 必须为 FULL，暂不支持 MINIMAL
 * 由于添加了更多的处理逻辑，解析速度不如 mysqlbinlog 快
-* 当 binlog 中的 DDL 语句变更表结构时，lightning 中的表结构原数据并不随之改变（TODO）
+* binlog 中的 CREATE/DROP/RENAME TABLE 与常见 ALTER TABLE 会同步更新内存表结构；
+  但 DROP/MODIFY/CHANGE COLUMN 等需要旧定义的 ALTER 无法在闪回中还原（TODO）
 
 ## 沟通交流
 
