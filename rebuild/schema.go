@@ -27,9 +27,7 @@ import (
 
 	// database/sql
 	_ "github.com/go-sql-driver/mysql"
-	"github.com/pingcap/parser/ast"
-	"github.com/pingcap/parser/model"
-	"github.com/pingcap/parser/mysql"
+	"github.com/pingcap/tidb/pkg/parser/ast"
 )
 
 // Schemas ...
@@ -198,7 +196,7 @@ func loadSchemaFromMySQL() error {
 
 func schemaAppend(database, sql string) error {
 	sql = removeIncompatibleWords(sql)
-	stmts, err := TiParse(sql, common.Config.Global.Charset, mysql.Charsets[common.Config.Global.Charset])
+	stmts, err := TiParse(sql, common.Config.Global.Charset, defaultCollation(common.Config.Global.Charset))
 	if err != nil {
 		return err
 	}
@@ -209,7 +207,7 @@ func schemaAppend(database, sql string) error {
 		switch node := stmt.(type) {
 		case *ast.CreateTableStmt:
 			if node.Table.Schema.String() == "" {
-				node.Table.Schema = model.NewCIStr(database)
+				node.Table.Schema = ast.NewCIStr(database)
 			}
 			Schemas[fmt.Sprintf("`%s`.`%s`", database, node.Table.Name)] = node
 		case *ast.UseStmt:

@@ -21,12 +21,12 @@ import (
 	"github.com/go-mysql-org/go-mysql/replication"
 	lua "github.com/yuin/gopher-lua"
 
-	"github.com/pingcap/parser"
-	"github.com/pingcap/parser/ast"
-	"github.com/pingcap/parser/mysql"
+	"github.com/pingcap/tidb/pkg/parser"
+	"github.com/pingcap/tidb/pkg/parser/ast"
+	"github.com/pingcap/tidb/pkg/parser/charset"
 
 	// pingcap/parser
-	_ "github.com/pingcap/tidb/types/parser_driver"
+	_ "github.com/pingcap/tidb/pkg/parser/test_driver"
 )
 
 // QueryRebuild rebuild sql, need pingcap/parser
@@ -113,6 +113,15 @@ func TiParse(sql, charset, collation string) ([]ast.StmtNode, error) {
 	return stmt, err
 }
 
+// defaultCollation returns the default collation name for a charset
+func defaultCollation(cs string) string {
+	collation, err := charset.GetDefaultCollation(cs)
+	if err != nil {
+		return ""
+	}
+	return collation
+}
+
 // QueryFormat ...
 func QueryFormat(sql string) {
 	if strings.HasPrefix(sql, "BEGIN") {
@@ -128,7 +137,7 @@ func QueryFormat(sql string) {
 }
 
 func QueryRollback(sql string) {
-	stmts, err := TiParse(sql, common.Config.Global.Charset, mysql.Charsets[common.Config.Global.Charset])
+	stmts, err := TiParse(sql, common.Config.Global.Charset, defaultCollation(common.Config.Global.Charset))
 	if err == nil {
 		for _, stmt := range stmts {
 			switch node := stmt.(type) {

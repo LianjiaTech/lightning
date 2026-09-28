@@ -28,7 +28,7 @@ import (
 	// database/sql
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/juju/errors"
-	pingcap "github.com/pingcap/parser/mysql"
+	"github.com/pingcap/tidb/pkg/parser/charset"
 	yaml "gopkg.in/yaml.v2"
 )
 
@@ -348,7 +348,7 @@ func ParseConfig() {
 	if *globalCharset != "" {
 		Config.Global.Charset = *globalCharset
 	}
-	if ok := pingcap.Charsets[Config.Global.Charset]; ok == "" {
+	if _, err := charset.GetDefaultCollation(Config.Global.Charset); err != nil {
 		Log.Warn("Config.Global.Charset: %s not exist", Config.Global.Charset)
 		Config.Global.Charset = "utf8mb4"
 	}

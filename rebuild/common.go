@@ -20,7 +20,7 @@ import (
 	"time"
 
 	"github.com/LianjiaTech/lightning/common"
-	"github.com/pingcap/parser/ast"
+	"github.com/pingcap/tidb/pkg/parser/ast"
 
 	"github.com/BixData/gluabit32"
 	"github.com/BixData/gluasocket"
@@ -126,7 +126,7 @@ func BuildValues(event *replication.RowsEvent) [][]string {
 			}
 			var unsigned bool
 			if ok := Schemas[table]; ok != nil {
-				if (Schemas[table].Cols[i].Tp.Flag & mysql.UNSIGNED_FLAG) > 0 {
+				if (Schemas[table].Cols[i].Tp.GetFlag() & mysql.UNSIGNED_FLAG) > 0 {
 					unsigned = true
 				}
 			}
