@@ -68,3 +68,18 @@ lightning -plugin flashback -keyring keyring -event-types delete binlog.encrypte
 # 仅以 binlog 文件存储在 minio 为例，使用 minio client 读取远程经过压缩的 binlog 文件
 mc cat path/to/binlog_file.gz | gunzip | ./lightning - > decrypt_log.sql
 ```
+
+## 批量分析多个 binlog 文件（复用表结构快照）
+
+每个 binlog 文件启动一次进程时，把同一个 `-schema-file` 传进去即可复用本地快照：第一次会从 MySQL 读取表结构并写入该文件，后续文件直接读本地文件，不再逐表执行 `SHOW CREATE TABLE`；文件里缺少的表会在解析到时按需加载并追加。
+
+```bash
+for f in binlog.000001 binlog.000002 binlog.000003; do
+  lightning -host xxx -user xxx -password xxx \
+    -schema-file /var/tmp/db.schema \
+    -plugin flashback -tables 'db.%' \
+    -binlog-file "$f" > "flashback.$f.sql"
+done
+```
+
+详见 [schema-file 表结构快照](mysql.md#schema-file-表结构快照)。

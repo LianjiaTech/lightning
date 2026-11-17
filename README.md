@@ -86,6 +86,10 @@ lightning 使用 YAML 格式的配置文件。使用 `-config` 参数指定配�
 * [过滤器](http://github.com/LianjiaTech/lightning/blob/master/doc/filters.md)
 * [SQL 重建规则](http://github.com/LianjiaTech/lightning/blob/master/doc/rebuild.md)
 
+### 表结构快照（schema-file）
+
+`-schema-file` 指定的本地文件既是表结构来源，也是缓存：文件存在时直接加载、不连接 MySQL；文件不存在或为空时自动从 MySQL 读取并写入；binlog 中出现但文件里没有的表会按需懒加载并追加到文件中。详见 [MySQL 日志源](http://github.com/LianjiaTech/lightning/blob/master/doc/mysql.md)。
+
 ## 限制/局限
 
 * 仅测试了 v4 版本 (MySQL 5.1+) 的 binlog，更早版本未做测试。

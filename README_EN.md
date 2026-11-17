@@ -84,6 +84,15 @@ lightning's config file is YAML formated. Configure file load sequence: /etc/lig
 * [Filter Config](http://github.com/LianjiaTech/lightning/blob/master/doc/filters.md)
 * [Rebuild Config](http://github.com/LianjiaTech/lightning/blob/master/doc/rebuild.md)
 
+### Schema snapshot (schema-file)
+
+The file passed with `-schema-file` is both the schema source and a local
+snapshot: when it exists it is loaded without contacting MySQL, when it is
+missing or empty the schemas are read from MySQL and written to it, and tables
+that appear in the binlog but are missing from the file are fetched on demand
+and appended. See [MySQL Config](http://github.com/LianjiaTech/lightning/blob/master/doc/mysql.md)
+for details.
+
 ## Limitation
 
 * binlog version only support v4 (MySQL 5.1+), no test with(<= MySQL 5.0)
