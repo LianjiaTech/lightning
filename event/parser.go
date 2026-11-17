@@ -294,8 +294,22 @@ func FileNextEvent(p *replication.BinlogParser, r io.Reader, stream cipher.Strea
 	return p.Parse(rawData)
 }
 
+// flushStreamOutput flushes buffered SQL after an event that completes a
+// statement or transaction.
+func flushStreamOutput(event *replication.BinlogEvent) {
+	switch event.Header.EventType {
+	case replication.XID_EVENT, replication.QUERY_EVENT, replication.ROTATE_EVENT, replication.TRANSACTION_PAYLOAD_EVENT:
+		common.FlushOut()
+	}
+}
+
 // BinlogStreamParser parser mysql connection replication event
 func BinlogStreamParser() error {
+	defer common.FlushOut()
+	if common.Config.MySQL.MasterInfo != "" {
+		// persist the final replication position
+		defer common.FlushReplicationInfo()
+	}
 	readTimeout, err := time.ParseDuration(common.Config.MySQL.ReadTimeout)
 	if err != nil {
 		common.Log.Error("BinlogStreamParser Error: %s", err.Error())
@@ -340,9 +354,10 @@ func BinlogStreamParser() error {
 			return errors.Trace(err)
 		}
 		handleBinlogEvent(event, true)
-		// Generated SQL is written through a buffered writer; flush per
-		// event so a streaming consumer sees output as it happens.
-		common.FlushOut()
+		// Generated SQL is buffered; flush at transaction boundaries so a
+		// streaming consumer still sees output promptly, without paying one
+		// write syscall per event.
+		flushStreamOutput(event)
 		if Ending {
 			break
 		}

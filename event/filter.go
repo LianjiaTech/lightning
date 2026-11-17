@@ -237,6 +237,10 @@ func FilterQueryType(event *replication.BinlogEvent) bool {
 	return false
 }
 
+const masterInfoSyncMinInterval = 100 * time.Millisecond
+
+var lastMasterInfoSync time.Time
+
 // UpdateMasterInfo ...
 func UpdateMasterInfo(event *replication.BinlogEvent) {
 	switch event.Header.EventType {
@@ -268,7 +272,17 @@ func UpdateMasterInfo(event *replication.BinlogEvent) {
 	}
 	common.MasterInfo.SecondsBehindMaster = time.Now().Unix() - int64(event.Header.Timestamp)
 	if common.Config.MySQL.SyncDuration.Seconds() == 0 {
-		common.FlushReplicationInfo()
+		// sync-interval 0 means "flush as soon as possible", but rewriting
+		// master.info for every event costs ~60us and dominates a streaming
+		// run. Flush at transaction boundaries, throttled to at most 10 times
+		// per second; the in-memory position still advances on every event.
+		switch event.Header.EventType {
+		case replication.XID_EVENT, replication.QUERY_EVENT, replication.ROTATE_EVENT, replication.TRANSACTION_PAYLOAD_EVENT:
+			if now := time.Now(); now.Sub(lastMasterInfoSync) >= masterInfoSyncMinInterval {
+				lastMasterInfoSync = now
+				common.FlushReplicationInfo()
+			}
+		}
 	}
 }
 

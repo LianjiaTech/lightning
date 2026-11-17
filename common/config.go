@@ -423,8 +423,12 @@ func ParseConfig() {
 	}
 	Config.MySQL.SyncDuration, err = time.ParseDuration(Config.MySQL.SyncInterval)
 	if err != nil {
-		Log.Warn("sync-interval '%s' Error: %s", Config.MySQL.SyncInterval, err.Error())
-		Config.MySQL.SyncDuration = time.Duration(0 * time.Second)
+		// An unparsable interval (e.g. "0" without a unit) used to degrade to
+		// 0, which rewrites master.info on every event. Fall back to the
+		// default instead.
+		Log.Error("sync-interval '%s' Error: %s, using 1s", Config.MySQL.SyncInterval, err.Error())
+		Config.MySQL.SyncInterval = "1s"
+		Config.MySQL.SyncDuration = time.Second
 	}
 	if *mysqlReadTimeout != "" {
 		_, err = time.ParseDuration(*mysqlReadTimeout)
