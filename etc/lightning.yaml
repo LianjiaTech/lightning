@@ -23,7 +23,8 @@ global:
 mysql:
   # 从文件读取二进制日志
   binlog-file: ["test/binlog.000002"]
-  # 建表语句文件
+  # 建表语句文件：存在则直接加载；文件不存在或为空时从 MySQL 读取并写入；
+  # binlog 中出现但文件里没有的表，会自动从 MySQL 懒加载并追加到该文件
   schema-file: test/schema.sql
   # MySQL 源
   master-info: etc/master.info

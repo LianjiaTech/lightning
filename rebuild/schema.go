@@ -20,6 +20,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"sync"
 
 	"github.com/juju/errors"
 
@@ -39,30 +40,48 @@ var Columns map[string][]string
 // PrimaryKeys ...
 var PrimaryKeys map[string][]string
 
-// LoadSchemaInfo load schema info from file or mysql
+// LoadSchemaInfo load schema info from a schema file or from mysql.
+//
+// A schema file is used as a local snapshot: it is read first, and when it is
+// missing, empty or does not contain a table that shows up in the binlog, the
+// schema is fetched from MySQL and written back to the file (see
+// EnsureTableSchema). This keeps repeated invocations cheap while still
+// producing a complete snapshot after the first run.
 func LoadSchemaInfo() {
-	if common.Config.MySQL.SchemaFile != "" {
-		// load from file
-		err := loadSchemaFromFile()
-		if err != nil {
+	path := common.Config.MySQL.SchemaFile
+	if path != "" {
+		if err := loadSchemaFromFile(); err != nil {
 			common.Log.Error(errors.Trace(err).Error())
 		}
+		if len(Schemas) > 0 {
+			return
+		}
+		if common.MasterInfo.MasterHost == "" {
+			common.Log.Error("schema-file %s is missing or empty and no MySQL host is configured", path)
+			return
+		}
+	}
+
+	// load from mysql server
+	err := loadSchemaFromMySQL()
+	if err != nil {
+		common.Log.Error(errors.Trace(err).Error())
 		return
-	} else {
-		// load from mysql server
-		err := loadSchemaFromMySQL()
-		if err != nil {
-			common.Log.Error(errors.Trace(err).Error())
+	}
+	if path != "" {
+		if err := saveSchemaFile(path); err != nil {
+			common.Log.Error("save schema-file %s: %s", path, errors.Trace(err).Error())
 		}
 	}
 }
 
 func loadSchemaFromFile() error {
-	common.Log.Debug("loadSchemaFromFile %s", common.Config.MySQL.SchemaFile)
-	if _, err := os.Stat(common.Config.MySQL.SchemaFile); err != nil {
-		return err
-	}
-	buf, err := ioutil.ReadFile(common.Config.MySQL.SchemaFile)
+	return loadSchemaFile(common.Config.MySQL.SchemaFile)
+}
+
+func loadSchemaFile(path string) error {
+	common.Log.Debug("loadSchemaFile %s", path)
+	buf, err := ioutil.ReadFile(path)
 	if err != nil {
 		return err
 	}
@@ -72,7 +91,159 @@ func loadSchemaFromFile() error {
 	return err
 }
 
+// schemaStatement is one CREATE TABLE statement collected while reading the
+// schema from the server.
+type schemaStatement struct {
+	database string
+	sql      string
+}
+
+// schemaStatements is filled by loadSchemaFromMySQL and written to
+// -schema-file so later runs do not have to hit the server.
+var schemaStatements []schemaStatement
+
+// saveSchemaFile writes the collected schema statements to path.
+func saveSchemaFile(path string) error {
+	if len(schemaStatements) == 0 {
+		return nil
+	}
+	var b strings.Builder
+	database := ""
+	for _, stmt := range schemaStatements {
+		if stmt.database != database {
+			database = stmt.database
+			fmt.Fprintf(&b, "USE `%s`;\n", database)
+		}
+		b.WriteString(stmt.sql)
+		if !strings.HasSuffix(stmt.sql, ";") {
+			b.WriteString(";")
+		}
+		b.WriteString("\n")
+	}
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, []byte(b.String()), 0644); err != nil {
+		return err
+	}
+	return os.Rename(tmp, path)
+}
+
+// loadTableDDL fetches one table definition from MySQL. It is a variable so
+// tests can stub the server.
+var loadTableDDL = func(database, table string) (string, error) {
+	db, err := sharedSchemaDB()
+	if err != nil {
+		return "", err
+	}
+	var name, ddl string
+	err = db.QueryRow(fmt.Sprintf("SHOW CREATE TABLE `%s`.`%s`", database, table)).Scan(&name, &ddl)
+	if err != nil {
+		return "", err
+	}
+	return ddl, nil
+}
+
+var (
+	schemaDBMu   sync.Mutex
+	schemaDBConn *sql.DB
+	schemaFailed = make(map[string]bool)
+)
+
+func sharedSchemaDB() (*sql.DB, error) {
+	schemaDBMu.Lock()
+	defer schemaDBMu.Unlock()
+	if schemaDBConn != nil {
+		return schemaDBConn, nil
+	}
+	dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/?charset=%s&timeout=5s",
+		common.MasterInfo.MasterUser,
+		common.MasterInfo.MasterPassword,
+		common.MasterInfo.MasterHost,
+		common.MasterInfo.MasterPort,
+		common.Config.Global.Charset,
+	)
+	db, err := sql.Open("mysql", dsn)
+	if err != nil {
+		return nil, err
+	}
+	schemaDBConn = db
+	return db, nil
+}
+
+// EnsureTableSchema makes sure the schema of table is available. When a
+// -schema-file snapshot does not contain it, the definition is fetched from
+// MySQL, added to the in-memory maps and appended to the snapshot file.
+func EnsureTableSchema(table string) {
+	if table == "" || common.Config.MySQL.SchemaFile == "" {
+		return
+	}
+	if _, ok := Schemas[table]; ok {
+		return
+	}
+	if schemaFailed[table] {
+		return
+	}
+	database, name, ok := tableNameParts(table)
+	if !ok {
+		schemaFailed[table] = true
+		return
+	}
+	if common.MasterInfo.MasterHost == "" {
+		schemaFailed[table] = true
+		return
+	}
+
+	ddl, err := loadTableDDL(database, name)
+	if err != nil {
+		schemaFailed[table] = true
+		common.Log.Error("load schema of %s: %s", table, err.Error())
+		return
+	}
+	if err := schemaAppend(database, ddl); err != nil {
+		schemaFailed[table] = true
+		common.Log.Error("parse schema of %s: %s", table, err.Error())
+		return
+	}
+	if schema, ok := Schemas[table]; ok {
+		ensureSchemaIndexes()
+		buildTableColumns(table, schema)
+		buildTablePrimaryKeys(table, schema)
+		if Lua != nil {
+			LuaMapStringList("GoPrimaryKeys", PrimaryKeys)
+			LuaMapStringList("GoColumns", Columns)
+		}
+	}
+	appendSchemaFile(common.Config.MySQL.SchemaFile, database, ddl)
+}
+
+func tableNameParts(table string) (database, name string, ok bool) {
+	database, rest, ok := strings.Cut(table, ".")
+	if !ok {
+		return "", "", false
+	}
+	name, _, _ = strings.Cut(rest, ".")
+	database = strings.Trim(database, "`")
+	name = strings.Trim(name, "`")
+	if database == "" || name == "" {
+		return "", "", false
+	}
+	return database, name, true
+}
+
+// appendSchemaFile appends one table definition to the -schema-file snapshot.
+func appendSchemaFile(path, database, ddl string) {
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		common.Log.Error("append schema-file %s: %s", path, err.Error())
+		return
+	}
+	defer f.Close()
+	if _, err := fmt.Fprintf(f, "\nUSE `%s`;\n%s;\n", database, ddl); err != nil {
+		common.Log.Error("append schema-file %s: %s", path, err.Error())
+	}
+}
+
 func loadSchemaFromMySQL() error {
+	schemaStatements = schemaStatements[:0]
 	var databases []string
 	dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/?charset=%s&timeout=5s",
 		common.MasterInfo.MasterUser,
@@ -182,7 +353,11 @@ func loadSchemaFromMySQL() error {
 						database, table,
 						schema,
 						errors.Trace(err).Error())
-					schemaAppend(database, buildFakeTable(db, fmt.Sprintf("`%s`.`%s`", database, table)))
+					fake := buildFakeTable(db, fmt.Sprintf("`%s`.`%s`", database, table))
+					schemaAppend(database, fake)
+					schemaStatements = append(schemaStatements, schemaStatement{database: database, sql: fake})
+				} else {
+					schemaStatements = append(schemaStatements, schemaStatement{database: database, sql: schema})
 				}
 			}
 			tableRes.Close()

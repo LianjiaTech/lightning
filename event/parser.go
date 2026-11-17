@@ -414,9 +414,26 @@ func handleBinlogEvent(event *replication.BinlogEvent, updateMaster bool) {
 	}
 }
 
+// isRowEvent reports whether the event carries row images.
+func isRowEvent(eventType replication.EventType) bool {
+	switch eventType {
+	case replication.WRITE_ROWS_EVENTv0, replication.WRITE_ROWS_EVENTv1, replication.WRITE_ROWS_EVENTv2,
+		replication.UPDATE_ROWS_EVENTv0, replication.UPDATE_ROWS_EVENTv1, replication.UPDATE_ROWS_EVENTv2,
+		replication.PARTIAL_UPDATE_ROWS_EVENT,
+		replication.DELETE_ROWS_EVENTv0, replication.DELETE_ROWS_EVENTv1, replication.DELETE_ROWS_EVENTv2:
+		return true
+	}
+	return false
+}
+
 // TypeSwitcher event router by type
 func TypeSwitcher(event *replication.BinlogEvent) {
 	rebuild.EventHeaderRebuild(event)
+	// A -schema-file snapshot may not cover every table in the binlog; fetch
+	// missing tables on demand (stat never uses schemas).
+	if common.Config.Rebuild.Plugin != "stat" && isRowEvent(event.Header.EventType) {
+		rebuild.EnsureTableSchema(rebuild.RowEventTable(event))
+	}
 	switch event.Header.EventType {
 	case replication.GTID_EVENT:
 		rebuild.GTIDRebuild(event.Event.(*replication.GTIDEvent))
