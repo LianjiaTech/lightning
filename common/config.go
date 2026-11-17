@@ -50,6 +50,8 @@ type GlobalConfig struct {
 	VerboseVerbose bool           `yaml:"verbose-verbose"` // more and more info to print
 	TimeZone       string         `yaml:"time-zone"`       // "UTC", "Asia/Shanghai"
 	Location       *time.Location `yaml:"-"`
+	CPUProfile     string         `yaml:"-"` // write a CPU profile to this file
+	MemProfile     string         `yaml:"-"` // write a heap profile to this file
 }
 
 var gConfig = GlobalConfig{
@@ -252,6 +254,8 @@ func ParseConfig() {
 	globalCharset := flag.String("charset", "", "charset use for binlog parsing")
 	globalCPU := flag.Int("cpu", 0, "cpu cores limit")
 	globalGCPercent := flag.Int("gc-percent", 0, "GC target percentage, 0 uses 300 for batch mode and Go default for daemon")
+	globalCPUProfile := flag.String("cpuprofile", "", "write a CPU profile to the specified file")
+	globalMemProfile := flag.String("memprofile", "", "write a heap profile to the specified file")
 	globalVerbose := flag.Bool("verbose", false, "verbose mode, more info will print")
 	globalVerboseVerbose := flag.Bool("vv", false, "verbose verbose mode, more and more info will print")
 	globalDaemon := flag.Bool("daemon", false, "replication run as daemon")
@@ -367,6 +371,12 @@ func ParseConfig() {
 	}
 	if *globalGCPercent != 0 {
 		Config.Global.GCPercent = *globalGCPercent
+	}
+	if *globalCPUProfile != "" {
+		Config.Global.CPUProfile = *globalCPUProfile
+	}
+	if *globalMemProfile != "" {
+		Config.Global.MemProfile = *globalMemProfile
 	}
 	if *globalVerbose {
 		Config.Global.Verbose = *globalVerbose

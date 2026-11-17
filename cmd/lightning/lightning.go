@@ -14,19 +14,49 @@
 package main
 
 import (
+	"os"
+	"runtime"
+	"runtime/pprof"
+
 	"github.com/LianjiaTech/lightning/common"
 	"github.com/LianjiaTech/lightning/event"
 	"github.com/LianjiaTech/lightning/rebuild"
-	// "github.com/pkg/profile"
 )
 
 func main() {
-	// defer profile.Start(profile.CPUProfile).Stop()
-
 	// load config from lightning.yaml, master.info, relay.info, command lines
 	common.ParseConfig()
 	// generated SQL goes through a buffered writer
 	defer common.FlushOut()
+
+	if path := common.Config.Global.CPUProfile; path != "" {
+		f, err := os.Create(path)
+		if err != nil {
+			println("create cpu profile:", err.Error())
+		} else {
+			if err := pprof.StartCPUProfile(f); err != nil {
+				println("start cpu profile:", err.Error())
+			}
+			defer func() {
+				pprof.StopCPUProfile()
+				f.Close()
+			}()
+		}
+	}
+	if path := common.Config.Global.MemProfile; path != "" {
+		defer func() {
+			runtime.GC()
+			f, err := os.Create(path)
+			if err != nil {
+				println("create mem profile:", err.Error())
+				return
+			}
+			defer f.Close()
+			if err := pprof.WriteHeapProfile(f); err != nil {
+				println("write mem profile:", err.Error())
+			}
+		}()
+	}
 
 	// load table schema info from mysql or create table SQL file.
 	// The stat plugin only needs table names and row counts, so loading and
