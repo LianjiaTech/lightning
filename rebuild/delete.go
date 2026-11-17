@@ -44,7 +44,7 @@ func DeleteQuery(event *replication.BinlogEvent) {
 	var table string
 	defer func() {
 		if r := recover(); r != nil {
-			fmt.Printf("-- Table: %s, Error: %s\n", table, strings.Split(fmt.Sprint(r), "\n")[0])
+			common.Outf("-- Table: %s, Error: %s\n", table, strings.Split(fmt.Sprint(r), "\n")[0])
 		}
 	}()
 	table = RowEventTable(event)
@@ -81,9 +81,9 @@ func deleteQuery(table string, values [][]string) {
 			}
 
 			if common.Config.Rebuild.WithoutDBName {
-				fmt.Printf("%s %s WHERE %s LIMIT 1;\n", deletePrefix, shortTableName, strings.Join(where, " AND "))
+				common.Outf("%s %s WHERE %s LIMIT 1;\n", deletePrefix, shortTableName, strings.Join(where, " AND "))
 			} else {
-				fmt.Printf("%s %s WHERE %s LIMIT 1;\n", deletePrefix, table, strings.Join(where, " AND "))
+				common.Outf("%s %s WHERE %s LIMIT 1;\n", deletePrefix, table, strings.Join(where, " AND "))
 			}
 		}
 	} else {
@@ -98,9 +98,9 @@ func deleteQuery(table string, values [][]string) {
 				}
 			}
 			if common.Config.Rebuild.WithoutDBName {
-				fmt.Printf("-- %s %s WHERE %s LIMIT 1;\n", deletePrefix, shortTableName, strings.Join(where, " AND "))
+				common.Outf("-- %s %s WHERE %s LIMIT 1;\n", deletePrefix, shortTableName, strings.Join(where, " AND "))
 			} else {
-				fmt.Printf("-- %s %s WHERE %s LIMIT 1;\n", deletePrefix, table, strings.Join(where, " AND "))
+				common.Outf("-- %s %s WHERE %s LIMIT 1;\n", deletePrefix, table, strings.Join(where, " AND "))
 			}
 		}
 	}
@@ -111,7 +111,7 @@ func DeleteRollbackQuery(event *replication.BinlogEvent) {
 	var table string
 	defer func() {
 		if r := recover(); r != nil {
-			fmt.Printf("-- Table: %s, Error: %s\n", table, strings.Split(fmt.Sprint(r), "\n")[0])
+			common.Outf("-- Table: %s, Error: %s\n", table, strings.Split(fmt.Sprint(r), "\n")[0])
 		}
 	}()
 	table = RowEventTable(event)
@@ -130,12 +130,13 @@ func DeleteStat(event *replication.BinlogEvent) {
 		TableStats[table] = map[string]int64{"delete": 1}
 	}
 
+	// rows only need counting here, no need to format every value
 	ev := event.Event.(*replication.RowsEvent)
-	values := BuildValues(ev)
+	rows := int64(len(ev.Rows))
 	if RowsStats[table] != nil {
-		RowsStats[table]["delete"] += int64(len(values))
+		RowsStats[table]["delete"] += rows
 	} else {
-		RowsStats[table] = map[string]int64{"delete": int64(len(values))}
+		RowsStats[table] = map[string]int64{"delete": rows}
 	}
 }
 

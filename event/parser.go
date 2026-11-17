@@ -14,6 +14,7 @@
 package event
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"crypto/cipher"
@@ -189,6 +190,7 @@ func CheckBinlogFileTime(files []string) error {
 
 // BinlogFileParser parser binary log file
 func BinlogFileParser(files []string) error {
+	defer common.FlushOut()
 	for _, filename := range files {
 		var fd *os.File
 		var err error
@@ -229,8 +231,17 @@ func BinlogFileParser(files []string) error {
 
 		p := replication.NewBinlogParser()
 		p.SetUseDecimal(true) // support Decimal type
+		if common.Config.Rebuild.Plugin == "stat" {
+			// stat only needs row counts, not the decoded values
+			p.SetRowsEventDecodeFunc(countRowsEvent)
+		}
+
+		// Binlog events are tiny (often < 200 bytes) but very numerous. Reading
+		// them straight from the file costs two read(2) syscalls per event, so
+		// put a large buffer in front of it.
+		reader := bufio.NewReaderSize(fd, 1<<20)
 		for {
-			event, err := FileNextEvent(p, fd, stream)
+			event, err := FileNextEvent(p, reader, stream)
 			if err == io.EOF {
 				break
 			}
@@ -250,35 +261,36 @@ func BinlogFileParser(files []string) error {
 // FileNextEvent ...
 func FileNextEvent(p *replication.BinlogParser, r io.Reader, stream cipher.Stream) (*replication.BinlogEvent, error) {
 	var err error
-	var head *replication.EventHeader
-	var event *replication.BinlogEvent
 
-	bufHead := make([]byte, EventHeaderLength)
+	// Read the 19-byte header into a stack buffer, then allocate the whole
+	// event once: the header is copied in and the body is read straight into
+	// the same slice. This replaces three allocations plus a full copy per
+	// event with a single allocation.
+	var headBuf [EventHeaderLength]byte
+	bufHead := headBuf[:]
 	if _, err = io.ReadFull(r, bufHead); err != nil {
-		return event, err
+		return nil, err
 	}
 	if stream != nil {
-		bufHead = decryptAESCTR(stream, bufHead)
+		stream.XORKeyStream(bufHead, bufHead)
 	}
 
-	head, err = ParseEventHeader(bufHead)
+	head, err := ParseEventHeader(bufHead)
 	if err != nil {
-		return event, errors.Trace(err)
+		return nil, errors.Trace(err)
 	}
 
-	eventLength := head.EventSize - replication.EventHeaderSize
-	bufBody := make([]byte, eventLength)
-	if n, err := io.ReadFull(r, bufBody); err != nil {
+	rawData := make([]byte, head.EventSize)
+	copy(rawData, bufHead)
+	body := rawData[EventHeaderLength:]
+	if n, err := io.ReadFull(r, body); err != nil {
 		err = errors.Errorf("get event body err %v, need %d - %d, but got %d", err, head.EventSize, replication.EventHeaderSize, n)
-		return event, err
+		return nil, err
 	}
 	if stream != nil {
-		bufBody = decryptAESCTR(stream, bufBody)
+		// decrypt in place; CTR keeps the keystream position across calls
+		stream.XORKeyStream(body, body)
 	}
-
-	var rawData []byte
-	rawData = append(rawData, bufHead...)
-	rawData = append(rawData, bufBody...)
 	return p.Parse(rawData)
 }
 
@@ -306,6 +318,10 @@ func BinlogStreamParser() error {
 		TimestampStringLocation: common.Config.Global.Location, // If ParseTime is false, convert TIMESTAMP into this specified timezone.
 		UseDecimal:              true,                          // support Decimal type
 	}
+	if common.Config.Rebuild.Plugin == "stat" {
+		// stat only needs row counts, not the decoded values
+		changeMaster.RowsEventDecodeFunc = countRowsEvent
+	}
 	syncer := replication.NewBinlogSyncer(changeMaster)
 	defer syncer.Close()
 	var streamer *replication.BinlogStreamer
@@ -324,6 +340,9 @@ func BinlogStreamParser() error {
 			return errors.Trace(err)
 		}
 		handleBinlogEvent(event, true)
+		// Generated SQL is written through a buffered writer; flush per
+		// event so a streaming consumer sees output as it happens.
+		common.FlushOut()
 		if Ending {
 			break
 		}
@@ -359,7 +378,9 @@ func handleBinlogEvent(event *replication.BinlogEvent, updateMaster bool) {
 	}
 	// DDL changes the in-memory schema globally, so keep it in sync even when
 	// the DDL event itself is filtered out (e.g. by a table filter).
-	if event.Header.EventType == replication.QUERY_EVENT {
+	// The stat plugin does not use schemas, so it can skip the SQL parsing
+	// and column index rebuilds entirely.
+	if event.Header.EventType == replication.QUERY_EVENT && common.Config.Rebuild.Plugin != "stat" {
 		query := event.Event.(*replication.QueryEvent)
 		rebuild.UpdateSchemaFromQuery(string(query.Schema), string(query.Query))
 	}
@@ -457,12 +478,12 @@ func sleepInterval(event *replication.BinlogEvent) {
 			replication.UPDATE_ROWS_EVENTv0, replication.UPDATE_ROWS_EVENTv1, replication.UPDATE_ROWS_EVENTv2,
 			replication.PARTIAL_UPDATE_ROWS_EVENT,
 			replication.DELETE_ROWS_EVENTv0, replication.DELETE_ROWS_EVENTv1, replication.DELETE_ROWS_EVENTv2:
-			fmt.Printf("SELECT sleep(%f);\n", interval)
+			common.Outf("SELECT sleep(%f);\n", interval)
 		case replication.QUERY_EVENT:
 			switch string(event.Event.(*replication.QueryEvent).Query) {
 			case "BEGIN", "COMMIT":
 			default:
-				fmt.Printf("SELECT sleep(%f);\n", interval)
+				common.Outf("SELECT sleep(%f);\n", interval)
 			}
 		}
 	}

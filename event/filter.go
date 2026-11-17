@@ -14,7 +14,9 @@
 package event
 
 import (
+	"bytes"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -56,13 +58,16 @@ func FilterThreadID(event *replication.BinlogEvent) bool {
 
 // FilterTables ...
 func FilterTables(event *replication.BinlogEvent) bool {
-	var do bool
 	if len(common.Config.Filters.Tables) == 0 {
-		do = true
+		return true
 	}
+	if !tableFiltersReady {
+		prepareTableFilters()
+	}
+	var do bool
 	table := rebuild.RowEventTable(event)
-	for _, filter := range common.Config.Filters.Tables {
-		if tableFilterMatch(table, filter) {
+	for i := range includeTableFilters {
+		if includeTableFilters[i].match(table) {
 			do = true
 			break
 		}
@@ -203,37 +208,33 @@ func FilterStopPos(event *replication.BinlogEvent) bool {
 
 // FilterQueryType ...
 func FilterQueryType(event *replication.BinlogEvent) bool {
-	var do bool
 	if len(common.Config.Filters.EventType) == 0 {
 		return true
 	}
 
+	var eventType string
+	switch event.Header.EventType {
+	case replication.WRITE_ROWS_EVENTv2, replication.WRITE_ROWS_EVENTv1, replication.WRITE_ROWS_EVENTv0:
+		eventType = "insert"
+	case replication.UPDATE_ROWS_EVENTv2, replication.UPDATE_ROWS_EVENTv1, replication.UPDATE_ROWS_EVENTv0, replication.PARTIAL_UPDATE_ROWS_EVENT:
+		eventType = "update"
+	case replication.DELETE_ROWS_EVENTv2, replication.DELETE_ROWS_EVENTv1, replication.DELETE_ROWS_EVENTv0:
+		eventType = "delete"
+	case replication.QUERY_EVENT:
+		eventType = rebuild.FirstKeyword(string(event.Event.(*replication.QueryEvent).Query))
+	default:
+		return false
+	}
+
+	// Config.Filters.EventType is normalized to lower case at startup, which
+	// keeps the historical case-sensitive comparison with the raw query
+	// keyword without lower-casing the filter list for every event.
 	for _, t := range common.Config.Filters.EventType {
-		switch event.Header.EventType {
-		case replication.WRITE_ROWS_EVENTv2, replication.WRITE_ROWS_EVENTv1, replication.WRITE_ROWS_EVENTv0:
-			if strings.ToLower(t) == "insert" {
-				do = true
-			}
-		case replication.UPDATE_ROWS_EVENTv2, replication.UPDATE_ROWS_EVENTv1, replication.UPDATE_ROWS_EVENTv0, replication.PARTIAL_UPDATE_ROWS_EVENT:
-			if strings.ToLower(t) == "update" {
-				do = true
-			}
-		case replication.DELETE_ROWS_EVENTv2, replication.DELETE_ROWS_EVENTv1, replication.DELETE_ROWS_EVENTv0:
-			if strings.ToLower(t) == "delete" {
-				do = true
-			}
-		case replication.QUERY_EVENT:
-			prefix := strings.Fields(string(event.Event.(*replication.QueryEvent).Query))[0]
-			if strings.ToLower(t) == prefix {
-				do = true
-			}
-		default:
-		}
-		if do {
-			break
+		if t == eventType {
+			return true
 		}
 	}
-	return do
+	return false
 }
 
 // UpdateMasterInfo ...
@@ -309,75 +310,167 @@ func BinlogFilter(event *replication.BinlogEvent) bool {
 	return true
 }
 
-func tableFilterMatch(table, filter string) bool {
-	var match, dbMatch, tbMatch bool
-	table = strings.Replace(table, "`", "", -1)
-	schema := strings.Split(table, ".")
-	if len(schema) < 2 {
-		return match
+// tableFilter is a pre-compiled -tables/-ignore-tables entry.
+type tableFilter struct {
+	dbAny    bool
+	dbExact  string
+	dbPrefix string
+	tbAny    bool
+	tbExact  string
+	tbPrefix string // lower case
+}
+
+var (
+	includeTableFilters []tableFilter
+	ignoreTableFilters  []tableFilter
+	tableFiltersReady   bool
+)
+
+// prepareTableFilters compiles the configured table filters once instead of
+// splitting and lower-casing them for every event.
+func prepareTableFilters() {
+	includeTableFilters = compileTableFilters(common.Config.Filters.Tables)
+	ignoreTableFilters = compileTableFilters(common.Config.Filters.IgnoreTables)
+	tableFiltersReady = true
+}
+
+func compileTableFilters(filters []string) []tableFilter {
+	compiled := make([]tableFilter, 0, len(filters))
+	for _, filter := range filters {
+		if f, ok := compileTableFilter(filter); ok {
+			compiled = append(compiled, f)
+		}
 	}
-	sep := strings.Split(filter, ".")
-	if len(sep) < 2 {
+	return compiled
+}
+
+func compileTableFilter(filter string) (tableFilter, bool) {
+	// keep the historical behaviour of ignoring anything after the table part
+	parts := strings.SplitN(filter, ".", 3)
+	if len(parts) < 2 {
 		common.Log.Error("tableFilterMatch, -tables: '%s' filter format error", filter)
-		return match
+		return tableFilter{}, false
+	}
+	f := tableFilter{dbExact: parts[0], tbExact: parts[1]}
+	if f.dbExact == "%" {
+		f.dbAny = true
+	}
+	if i := strings.Index(f.dbExact, "%"); i > 0 {
+		f.dbPrefix = f.dbExact[:i]
+	}
+	if f.tbExact == "%" {
+		f.tbAny = true
+	}
+	if i := strings.Index(f.tbExact, "%"); i > 0 {
+		f.tbPrefix = strings.ToLower(f.tbExact[:i])
+	}
+	return f, true
+}
+
+// match reports whether a `schema`.`table` name matches the filter.
+func (f *tableFilter) match(table string) bool {
+	db, tb, ok := splitTableName(table)
+	if !ok {
+		return false
 	}
 
-	// 库表名大小写不敏感
-	if sep[0] == "%" {
+	dbMatch := f.dbAny || db == "%"
+	if !dbMatch && f.dbPrefix != "" && strings.HasPrefix(db, f.dbPrefix) {
 		dbMatch = true
 	}
-	// 当 -schema 指定的文件中只有 CREATE TABLE 忘了写 USE db 的时候，schema[0] 为 %
-	if schema[0] == "%" {
-		dbMatch = true
-	}
-	if i := strings.Index(sep[0], "%"); i > 0 {
-		if strings.HasPrefix(schema[0], sep[0][0:i]) {
-			dbMatch = true
-		}
-	}
-	if strings.ToLower(schema[0]) == strings.ToLower(sep[0]) {
+	if !dbMatch && strings.EqualFold(db, f.dbExact) {
 		dbMatch = true
 	}
 
-	if sep[1] == "%" {
+	tbMatch := f.tbAny
+	if !tbMatch && f.tbPrefix != "" && strings.HasPrefix(strings.ToLower(tb), f.tbPrefix) {
 		tbMatch = true
 	}
-	if i := strings.Index(sep[1], "%"); i > 0 {
-		if strings.HasPrefix(strings.ToLower(schema[1]), strings.ToLower(sep[1][0:i])) {
-			tbMatch = true
-		}
-	}
-	if schema[1] == sep[1] {
+	if !tbMatch && tb == f.tbExact {
 		tbMatch = true
 	}
-	match = dbMatch && tbMatch
-	return match
+	return dbMatch && tbMatch
+}
+
+// splitTableName splits a table name (with or without backticks) without
+// allocating.
+func splitTableName(table string) (db, tb string, ok bool) {
+	db, rest, ok := strings.Cut(table, ".")
+	if !ok {
+		return "", "", false
+	}
+	tb, _, _ = strings.Cut(rest, ".")
+	return strings.Trim(db, "`"), strings.Trim(tb, "`"), true
+}
+
+func tableFilterMatch(table, filter string) bool {
+	f, ok := compileTableFilter(filter)
+	if !ok {
+		return false
+	}
+	return f.match(table)
 }
 
 // InGTIDSet ...
 func InGTIDSet(sid []byte, gno int64, gtidSet string) bool {
-	var gtidSets [][]string
-	for _, set := range strings.Split(gtidSet, ",") {
-		var couple []string
-		tmp := strings.Split(strings.TrimSpace(set), ":")
-		if len(tmp) != 2 {
-			return true
-		}
-		couple = append(couple, tmp[0])
-		couple = append(couple, strings.Split(tmp[1], "-")...)
-		gtidSets = append(gtidSets, couple)
+	m := compileGTIDSet(gtidSet)
+	if m.all {
+		return true
 	}
-	for _, set := range gtidSets {
-		s, _ := uuid.FromBytes(sid)
-		if len(set) != 3 {
+	gnoStr := strconv.FormatInt(gno, 10)
+	for i := range m.ranges {
+		r := &m.ranges[i]
+		if !bytes.Equal(sid, r.sid[:]) {
 			continue
 		}
-		if set[0] == s.String() {
-			if strings.Compare(set[1], fmt.Sprint(gno)) <= 0 &&
-				strings.Compare(set[2], fmt.Sprint(gno)) >= 0 {
-				return true
-			}
+		if strings.Compare(r.min, gnoStr) <= 0 && strings.Compare(r.max, gnoStr) >= 0 {
+			return true
 		}
 	}
 	return false
+}
+
+type gtidRange struct {
+	sid uuid.UUID
+	min string
+	max string
+}
+
+type gtidMatcher struct {
+	// all mirrors the historical behaviour: a malformed set matches everything
+	all    bool
+	ranges []gtidRange
+}
+
+var gtidMatcherCache = make(map[string]*gtidMatcher)
+
+// compileGTIDSet parses a GTID set once instead of for every event.
+func compileGTIDSet(gtidSet string) *gtidMatcher {
+	if m, ok := gtidMatcherCache[gtidSet]; ok {
+		return m
+	}
+	m := &gtidMatcher{}
+	for _, set := range strings.Split(gtidSet, ",") {
+		tmp := strings.Split(strings.TrimSpace(set), ":")
+		if len(tmp) != 2 {
+			m.all = true
+			break
+		}
+		parts := strings.Split(tmp[1], "-")
+		if len(parts) != 2 {
+			continue
+		}
+		u, err := uuid.FromString(tmp[0])
+		// the historical implementation compared the raw text with the
+		// canonical lower-case UUID, so any other spelling never matched
+		if err != nil || u.String() != tmp[0] {
+			continue
+		}
+		m.ranges = append(m.ranges, gtidRange{sid: u, min: parts[0], max: parts[1]})
+	}
+	if len(gtidMatcherCache) > 8 {
+		gtidMatcherCache = make(map[string]*gtidMatcher)
+	}
+	gtidMatcherCache[gtidSet] = m
+	return m
 }

@@ -246,40 +246,52 @@ func removeIncompatibleWords(sql string) string {
 
 // buildColumns build column name list
 func buildColumns() {
-	Columns = make(map[string][]string)
+	Columns = make(map[string][]string, len(Schemas))
 	for _, schema := range Schemas {
-		table := fmt.Sprintf("`%s`.`%s`", schema.Table.Schema.String(), schema.Table.Name.String())
-		for _, col := range schema.Cols {
-			Columns[table] = append(Columns[table], fmt.Sprintf("`%s`", col.Name.String()))
-		}
+		buildTableColumns(schemaKey(schema.Table.Schema.String(), schema.Table.Name.String()), schema)
 	}
+}
+
+// buildTableColumns rebuilds the column list of a single table.
+func buildTableColumns(table string, schema *ast.CreateTableStmt) {
+	columns := make([]string, 0, len(schema.Cols))
+	for _, col := range schema.Cols {
+		columns = append(columns, fmt.Sprintf("`%s`", col.Name.String()))
+	}
+	Columns[table] = columns
 }
 
 // buildPrimaryKeys build primary key list
 func buildPrimaryKeys() {
-	PrimaryKeys = make(map[string][]string)
+	PrimaryKeys = make(map[string][]string, len(Schemas))
 	for _, schema := range Schemas {
-		table := fmt.Sprintf("`%s`.`%s`", schema.Table.Schema.String(), schema.Table.Name.String())
-		for _, con := range schema.Constraints {
-			if con.Tp == ast.ConstraintPrimaryKey {
-				for _, col := range con.Keys {
-					PrimaryKeys[table] = append(PrimaryKeys[table], fmt.Sprintf("`%s`", col.Column.String()))
-				}
+		buildTablePrimaryKeys(schemaKey(schema.Table.Schema.String(), schema.Table.Name.String()), schema)
+	}
+}
+
+// buildTablePrimaryKeys rebuilds the primary key list of a single table.
+func buildTablePrimaryKeys(table string, schema *ast.CreateTableStmt) {
+	var keys []string
+	for _, con := range schema.Constraints {
+		if con.Tp == ast.ConstraintPrimaryKey {
+			for _, col := range con.Keys {
+				keys = append(keys, fmt.Sprintf("`%s`", col.Column.String()))
 			}
-		}
-		// inline column primary key, e.g. `id` int primary key
-		for _, col := range schema.Cols {
-			for _, opt := range col.Options {
-				if opt.Tp == ast.ColumnOptionPrimaryKey {
-					PrimaryKeys[table] = append(PrimaryKeys[table], fmt.Sprintf("`%s`", col.Name.Name.String()))
-				}
-			}
-		}
-		// 如果表没有主键，把表的所有列合起来当主键
-		if len(PrimaryKeys[table]) == 0 {
-			PrimaryKeys[table] = Columns[table]
 		}
 	}
+	// inline column primary key, e.g. `id` int primary key
+	for _, col := range schema.Cols {
+		for _, opt := range col.Options {
+			if opt.Tp == ast.ColumnOptionPrimaryKey {
+				keys = append(keys, fmt.Sprintf("`%s`", col.Name.Name.String()))
+			}
+		}
+	}
+	// 如果表没有主键，把表的所有列合起来当主键
+	if len(keys) == 0 {
+		keys = Columns[table]
+	}
+	PrimaryKeys[table] = keys
 }
 
 // buildFakeTable ...

@@ -36,37 +36,64 @@ func UpdateSchemaFromQuery(db, sql string) {
 		common.VerboseVerbose("-- [DEBUG] UpdateSchemaFromQuery parse error: %s, sql: %s", err.Error(), sql)
 		return
 	}
-	changed := false
+	// Only tables touched by this DDL need their column/PK indexes rebuilt.
+	dirty := make(map[string]struct{})
 	for _, stmt := range stmts {
 		switch node := stmt.(type) {
 		case *ast.CreateTableStmt:
-			changed = addTableSchema(db, node) || changed
+			dirty[addTableSchema(db, node)] = struct{}{}
 		case *ast.DropTableStmt:
 			for _, t := range node.Tables {
-				changed = dropTableSchema(db, t) || changed
+				dropTableSchema(db, t, dirty)
 			}
 		case *ast.AlterTableStmt:
-			changed = alterTableSchema(db, node) || changed
+			alterTableSchema(db, node, dirty)
 		case *ast.RenameTableStmt:
 			for _, t := range node.TableToTables {
-				changed = renameTableSchema(db, t) || changed
+				renameTableSchema(db, t, dirty)
 			}
 		}
 	}
-	if changed {
-		buildColumns()
-		buildPrimaryKeys()
+	if len(dirty) == 0 {
+		return
 	}
+	ensureSchemaIndexes()
+	for key := range dirty {
+		rebuildTableIndexes(key)
+	}
+}
+
+// ensureSchemaIndexes allocates the derived indexes when LoadSchemaInfo did not
+// populate them (e.g. schema loading failed).
+func ensureSchemaIndexes() {
+	if Columns == nil {
+		Columns = make(map[string][]string)
+	}
+	if PrimaryKeys == nil {
+		PrimaryKeys = make(map[string][]string)
+	}
+}
+
+// rebuildTableIndexes refreshes the derived columns/primary keys of one table.
+func rebuildTableIndexes(key string) {
+	schema, ok := Schemas[key]
+	if !ok {
+		delete(Columns, key)
+		delete(PrimaryKeys, key)
+		return
+	}
+	buildTableColumns(key, schema)
+	buildTablePrimaryKeys(key, schema)
 }
 
 // isDDL is a cheap pre-check to avoid parsing ordinary DML statements.
 func isDDL(sql string) bool {
-	fields := strings.Fields(sql)
-	if len(fields) == 0 {
-		return false
-	}
-	switch strings.ToUpper(fields[0]) {
-	case "CREATE", "ALTER", "DROP", "RENAME":
+	kw := FirstKeyword(sql)
+	switch {
+	case strings.EqualFold(kw, "CREATE"),
+		strings.EqualFold(kw, "ALTER"),
+		strings.EqualFold(kw, "DROP"),
+		strings.EqualFold(kw, "RENAME"):
 		return true
 	default:
 		return false
@@ -85,28 +112,28 @@ func tableSchemaKey(db string, t *ast.TableName) string {
 	return schemaKey(schema, t.Name.String())
 }
 
-func addTableSchema(db string, node *ast.CreateTableStmt) bool {
+func addTableSchema(db string, node *ast.CreateTableStmt) string {
 	if node.Table.Schema.String() == "" {
 		node.Table.Schema = ast.NewCIStr(db)
 	}
-	Schemas[schemaKey(node.Table.Schema.String(), node.Table.Name.String())] = node
-	return true
+	key := schemaKey(node.Table.Schema.String(), node.Table.Name.String())
+	Schemas[key] = node
+	return key
 }
 
-func dropTableSchema(db string, t *ast.TableName) bool {
+func dropTableSchema(db string, t *ast.TableName, dirty map[string]struct{}) {
 	key := tableSchemaKey(db, t)
 	if _, ok := Schemas[key]; ok {
 		delete(Schemas, key)
-		return true
+		dirty[key] = struct{}{}
 	}
-	return false
 }
 
-func renameTableSchema(db string, t *ast.TableToTable) bool {
+func renameTableSchema(db string, t *ast.TableToTable, dirty map[string]struct{}) {
 	key := tableSchemaKey(db, t.OldTable)
 	node, ok := Schemas[key]
 	if !ok {
-		return false
+		return
 	}
 	delete(Schemas, key)
 	newSchema := t.NewTable.Schema.String()
@@ -118,55 +145,66 @@ func renameTableSchema(db string, t *ast.TableToTable) bool {
 	}
 	t.NewTable.Schema = ast.NewCIStr(newSchema)
 	node.Table = t.NewTable
-	Schemas[schemaKey(newSchema, t.NewTable.Name.String())] = node
-	return true
+	newKey := schemaKey(newSchema, t.NewTable.Name.String())
+	Schemas[newKey] = node
+	dirty[key] = struct{}{}
+	dirty[newKey] = struct{}{}
 }
 
-func alterTableSchema(db string, node *ast.AlterTableStmt) bool {
+func alterTableSchema(db string, node *ast.AlterTableStmt, dirty map[string]struct{}) {
 	key := tableSchemaKey(db, node.Table)
 	table, ok := Schemas[key]
 	if !ok {
-		return false
+		return
 	}
-	changed := false
 	for _, spec := range node.Specs {
 		switch spec.Tp {
 		case ast.AlterTableAddColumns:
 			table.Cols = append(table.Cols, spec.NewColumns...)
-			changed = true
+			dirty[key] = struct{}{}
 		case ast.AlterTableDropColumn:
 			if spec.OldColumnName != nil {
-				changed = dropColumn(table, spec.OldColumnName.Name.String()) || changed
+				if dropColumn(table, spec.OldColumnName.Name.String()) {
+					dirty[key] = struct{}{}
+				}
 			}
 		case ast.AlterTableModifyColumn:
 			if len(spec.NewColumns) == 1 {
-				changed = replaceColumn(table, spec.NewColumns[0].Name.Name.String(), spec.NewColumns[0]) || changed
+				if replaceColumn(table, spec.NewColumns[0].Name.Name.String(), spec.NewColumns[0]) {
+					dirty[key] = struct{}{}
+				}
 			}
 		case ast.AlterTableChangeColumn:
 			if spec.OldColumnName != nil && len(spec.NewColumns) == 1 {
 				oldName := spec.OldColumnName.Name.String()
 				if dropColumn(table, oldName) {
 					table.Cols = append(table.Cols, spec.NewColumns[0])
-					changed = true
+					dirty[key] = struct{}{}
 				}
 			}
 		case ast.AlterTableRenameColumn:
 			if spec.OldColumnName != nil && spec.NewColumnName != nil {
-				changed = renameColumn(table, spec.OldColumnName.Name.String(), spec.NewColumnName.Name.String()) || changed
+				if renameColumn(table, spec.OldColumnName.Name.String(), spec.NewColumnName.Name.String()) {
+					dirty[key] = struct{}{}
+				}
 			}
 		case ast.AlterTableAddConstraint:
 			switch {
 			case spec.Constraint != nil:
 				table.Constraints = append(table.Constraints, spec.Constraint)
-				changed = true
+				dirty[key] = struct{}{}
 			case len(spec.NewConstraints) > 0:
 				table.Constraints = append(table.Constraints, spec.NewConstraints...)
-				changed = true
+				dirty[key] = struct{}{}
 			}
 		case ast.AlterTableDropPrimaryKey:
-			changed = dropConstraint(table, ast.ConstraintPrimaryKey, "") || changed
+			if dropConstraint(table, ast.ConstraintPrimaryKey, "") {
+				dirty[key] = struct{}{}
+			}
 		case ast.AlterTableDropIndex:
-			changed = dropConstraint(table, ast.ConstraintKey, spec.Name) || changed
+			if dropConstraint(table, ast.ConstraintKey, spec.Name) {
+				dirty[key] = struct{}{}
+			}
 		case ast.AlterTableRenameTable:
 			if spec.NewTable != nil {
 				delete(Schemas, key)
@@ -179,13 +217,14 @@ func alterTableSchema(db string, node *ast.AlterTableStmt) bool {
 				}
 				spec.NewTable.Schema = ast.NewCIStr(newSchema)
 				table.Table = spec.NewTable
-				key = schemaKey(newSchema, spec.NewTable.Name.String())
-				Schemas[key] = table
-				changed = true
+				newKey := schemaKey(newSchema, spec.NewTable.Name.String())
+				Schemas[newKey] = table
+				dirty[key] = struct{}{}
+				dirty[newKey] = struct{}{}
+				key = newKey
 			}
 		}
 	}
-	return changed
 }
 
 func dropColumn(table *ast.CreateTableStmt, name string) bool {

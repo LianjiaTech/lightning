@@ -113,6 +113,29 @@ func TiParse(sql, charset, collation string) ([]ast.StmtNode, error) {
 	return stmt, err
 }
 
+// FirstKeyword returns the leading keyword of a SQL statement without
+// allocating, e.g. "CREATE" for "CREATE TABLE t (a int)". It returns an empty
+// string when the statement has no keyword.
+func FirstKeyword(sql string) string {
+	i := 0
+	for i < len(sql) && isSpaceByte(sql[i]) {
+		i++
+	}
+	start := i
+	for i < len(sql) && !isSpaceByte(sql[i]) {
+		i++
+	}
+	return sql[start:i]
+}
+
+func isSpaceByte(c byte) bool {
+	switch c {
+	case ' ', '\t', '\r', '\n', '\v', '\f':
+		return true
+	}
+	return false
+}
+
 // defaultCollation returns the default collation name for a charset
 func defaultCollation(cs string) string {
 	collation, err := charset.GetDefaultCollation(cs)
@@ -130,13 +153,19 @@ func QueryFormat(sql string) {
 	}
 
 	if strings.HasSuffix(sql, ";") {
-		fmt.Println(sql)
+		common.Outln(sql)
 	} else {
-		fmt.Println(sql, ";")
+		common.Outln(sql, ";")
 	}
 }
 
 func QueryRollback(sql string) {
+	// Only DDL statements can be rolled back from the binlog query text.
+	// BEGIN/COMMIT and DML query events are very frequent, and running the
+	// full TiDB parser for each of them dominates flashback generation.
+	if !isDDL(sql) {
+		return
+	}
 	stmts, err := TiParse(sql, common.Config.Global.Charset, defaultCollation(common.Config.Global.Charset))
 	if err == nil {
 		for _, stmt := range stmts {
@@ -165,32 +194,32 @@ func QueryRollback(sql string) {
 // CreateTableRollback ...
 func CreateTableRollback(stmt *ast.CreateTableStmt) {
 	if stmt.Table.Schema.String() == "" {
-		fmt.Printf("DROP TABLE IF EXISTS `%s`;\n", stmt.Table.Name)
+		common.Outf("DROP TABLE IF EXISTS `%s`;\n", stmt.Table.Name)
 	} else {
-		fmt.Printf("DROP TABLE IF EXISTS `%s`.`%s`;\n", stmt.Table.Schema, stmt.Table.Name)
+		common.Outf("DROP TABLE IF EXISTS `%s`.`%s`;\n", stmt.Table.Schema, stmt.Table.Name)
 	}
 }
 
 // CreateDatabaseRollback ...
 func CreateDatabaseRollback(stmt *ast.CreateDatabaseStmt) {
-	fmt.Printf("DROP DATABASE IF EXISTS `%s`;\n", stmt.Name)
+	common.Outf("DROP DATABASE IF EXISTS `%s`;\n", stmt.Name)
 }
 
 // CreateIndexRollback ...
 func CreateIndexRollback(stmt *ast.CreateIndexStmt) {
 	if stmt.Table.Schema.String() == "" {
-		fmt.Printf("DROP INDEX `%s` ON `%s`;\n", stmt.IndexName, stmt.Table.Name)
+		common.Outf("DROP INDEX `%s` ON `%s`;\n", stmt.IndexName, stmt.Table.Name)
 	} else {
-		fmt.Printf("DROP INDEX `%s` ON `%s`.`%s`;\n", stmt.IndexName, stmt.Table.Schema, stmt.Table.Name)
+		common.Outf("DROP INDEX `%s` ON `%s`.`%s`;\n", stmt.IndexName, stmt.Table.Schema, stmt.Table.Name)
 	}
 }
 
 // CreateViewRollback ...
 func CreateViewRollback(stmt *ast.CreateViewStmt) {
 	if stmt.ViewName.Schema.String() == "" {
-		fmt.Printf("DROP VIEW IF EXISTS `%s`;\n", stmt.ViewName.Name)
+		common.Outf("DROP VIEW IF EXISTS `%s`;\n", stmt.ViewName.Name)
 	} else {
-		fmt.Printf("DROP VIEW IF EXISTS `%s`.`%s`;\n", stmt.ViewName.Schema, stmt.ViewName.Name)
+		common.Outf("DROP VIEW IF EXISTS `%s`.`%s`;\n", stmt.ViewName.Schema, stmt.ViewName.Name)
 	}
 }
 
@@ -204,11 +233,11 @@ func AlterTableRollback(stmt *ast.AlterTableStmt) {
 		switch spec.Tp {
 		case ast.AlterTableAddColumns:
 			for _, col := range spec.NewColumns {
-				fmt.Printf("ALTER TABLE %s DROP COLUMN `%s`;\n", table, col.Name.Name.String())
+				common.Outf("ALTER TABLE %s DROP COLUMN `%s`;\n", table, col.Name.Name.String())
 			}
 			for _, con := range spec.NewConstraints {
 				if sql := dropConstraintRollback(table, con); sql != "" {
-					fmt.Println(sql)
+					common.Outln(sql)
 				} else {
 					common.VerboseVerbose("-- [DEBUG] can't rollback ALTER TABLE %s ADD constraint", table)
 				}
@@ -216,19 +245,19 @@ func AlterTableRollback(stmt *ast.AlterTableStmt) {
 		case ast.AlterTableAddConstraint:
 			if spec.Constraint != nil {
 				if sql := dropConstraintRollback(table, spec.Constraint); sql != "" {
-					fmt.Println(sql)
+					common.Outln(sql)
 				} else {
 					common.VerboseVerbose("-- [DEBUG] can't rollback ALTER TABLE %s ADD constraint", table)
 				}
 			}
 		case ast.AlterTableRenameColumn:
 			if spec.OldColumnName != nil && spec.NewColumnName != nil {
-				fmt.Printf("ALTER TABLE %s RENAME COLUMN `%s` TO `%s`;\n",
+				common.Outf("ALTER TABLE %s RENAME COLUMN `%s` TO `%s`;\n",
 					table, spec.NewColumnName.Name.String(), spec.OldColumnName.Name.String())
 			}
 		case ast.AlterTableRenameTable:
 			if spec.NewTable != nil {
-				fmt.Printf("ALTER TABLE %s RENAME TO %s;\n", formatTableName(spec.NewTable), table)
+				common.Outf("ALTER TABLE %s RENAME TO %s;\n", formatTableName(spec.NewTable), table)
 			}
 		case ast.AlterTableDropColumn, ast.AlterTableModifyColumn, ast.AlterTableChangeColumn,
 			ast.AlterTableDropPrimaryKey, ast.AlterTableDropIndex, ast.AlterTableDropForeignKey:
@@ -266,7 +295,11 @@ func dropConstraintRollback(table string, con *ast.Constraint) string {
 func QueryStat(sql string) {
 	// TODO: statement base table stat
 	// stmt, err := TiParse(sql, common.Config.Global.Charset, mysql.Charsets[common.Config.Global.Charset])
-	t := strings.ToLower(strings.Fields(sql)[0])
+	keyword := FirstKeyword(sql)
+	if keyword == "" {
+		return
+	}
+	t := strings.ToLower(keyword)
 
 	// ignore comment in Query Event
 	if t == "--" || strings.HasPrefix(t, "#") || strings.HasPrefix(t, "/*") {

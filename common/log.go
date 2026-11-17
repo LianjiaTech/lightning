@@ -14,8 +14,10 @@
 package common
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
+	"os"
 	"regexp"
 	"runtime"
 	"strings"
@@ -26,6 +28,43 @@ import (
 
 // Log 使用 beego 的 log 库
 var Log *logs.BeeLogger
+
+// output is the buffered writer used for generated SQL. Writing each
+// statement straight to os.Stdout costs one write(2) syscall per row, which
+// dominates the runtime when generating SQL for large binlogs.
+var (
+	outFile *os.File
+	outBuf  *bufio.Writer
+)
+
+const outBufferSize = 1 << 20
+
+// Out returns the buffered writer for generated SQL. It is rebound when
+// os.Stdout changes (tests swap os.Stdout to capture output).
+func Out() *bufio.Writer {
+	if outBuf == nil || outFile != os.Stdout {
+		outFile = os.Stdout
+		outBuf = bufio.NewWriterSize(outFile, outBufferSize)
+	}
+	return outBuf
+}
+
+// Outf writes formatted output to the buffered stdout writer.
+func Outf(format string, a ...interface{}) {
+	_, _ = fmt.Fprintf(Out(), format, a...)
+}
+
+// Outln writes a line to the buffered stdout writer.
+func Outln(a ...interface{}) {
+	_, _ = fmt.Fprintln(Out(), a...)
+}
+
+// FlushOut flushes pending generated SQL output.
+func FlushOut() {
+	if outBuf != nil && outFile == os.Stdout {
+		_ = outBuf.Flush()
+	}
+}
 
 func init() {
 	Log = logs.NewLogger(0)

@@ -44,7 +44,7 @@ func InsertQuery(event *replication.BinlogEvent) {
 	var table string
 	defer func() {
 		if r := recover(); r != nil {
-			fmt.Printf("-- Table: %s, Error: %s\n", table, strings.Split(fmt.Sprint(r), "\n")[0])
+			common.Outf("-- Table: %s, Error: %s\n", table, strings.Split(fmt.Sprint(r), "\n")[0])
 		}
 	}()
 	table = RowEventTable(event)
@@ -103,9 +103,9 @@ func insertQuery(table string, values [][]string) {
 			InsertValuesMerge = append(InsertValuesMerge, fmt.Sprintf("(%s)", valStr))
 		} else {
 			if common.Config.Rebuild.WithoutDBName {
-				fmt.Printf("%s %s %s VALUES (%s);\n", insertPrefix, shortTableName, colStr, valStr)
+				common.Outf("%s %s %s VALUES (%s);\n", insertPrefix, shortTableName, colStr, valStr)
 			} else {
-				fmt.Printf("%s %s %s VALUES (%s);\n", insertPrefix, table, colStr, valStr)
+				common.Outf("%s %s %s VALUES (%s);\n", insertPrefix, table, colStr, valStr)
 			}
 		}
 
@@ -113,18 +113,18 @@ func insertQuery(table string, values [][]string) {
 		if row != 0 && common.Config.Rebuild.ExtendedInsertCount > 1 &&
 			(row+1)%common.Config.Rebuild.ExtendedInsertCount == 0 {
 			if common.Config.Rebuild.WithoutDBName {
-				fmt.Printf("%s %s %s VALUES %s;\n", insertPrefix, shortTableName, colStr, strings.Join(InsertValuesMerge, ", "))
+				common.Outf("%s %s %s VALUES %s;\n", insertPrefix, shortTableName, colStr, strings.Join(InsertValuesMerge, ", "))
 			} else {
-				fmt.Printf("%s %s %s VALUES %s;\n", insertPrefix, table, colStr, strings.Join(InsertValuesMerge, ", "))
+				common.Outf("%s %s %s VALUES %s;\n", insertPrefix, table, colStr, strings.Join(InsertValuesMerge, ", "))
 			}
 			InsertValuesMerge = []string{}
 		}
 	}
 	if len(InsertValuesMerge) > 0 {
 		if common.Config.Rebuild.WithoutDBName {
-			fmt.Printf("%s %s %s VALUES %s;\n", insertPrefix, shortTableName, colStr, strings.Join(InsertValuesMerge, ", "))
+			common.Outf("%s %s %s VALUES %s;\n", insertPrefix, shortTableName, colStr, strings.Join(InsertValuesMerge, ", "))
 		} else {
-			fmt.Printf("%s %s %s VALUES %s;\n", insertPrefix, table, colStr, strings.Join(InsertValuesMerge, ", "))
+			common.Outf("%s %s %s VALUES %s;\n", insertPrefix, table, colStr, strings.Join(InsertValuesMerge, ", "))
 		}
 		InsertValuesMerge = []string{}
 	}
@@ -135,7 +135,7 @@ func InsertRollbackQuery(event *replication.BinlogEvent) {
 	var table string
 	defer func() {
 		if r := recover(); r != nil {
-			fmt.Printf("-- Table: %s, Error: %s\n", table, strings.Split(fmt.Sprint(r), "\n")[0])
+			common.Outf("-- Table: %s, Error: %s\n", table, strings.Split(fmt.Sprint(r), "\n")[0])
 		}
 	}()
 	table = RowEventTable(event)
@@ -156,12 +156,13 @@ func InsertStat(event *replication.BinlogEvent) {
 		TableStats[table] = map[string]int64{"insert": 1}
 	}
 
+	// rows only need counting here, no need to format every value
 	ev := event.Event.(*replication.RowsEvent)
-	values := BuildValues(ev)
+	rows := int64(len(ev.Rows))
 	if RowsStats[table] != nil {
-		RowsStats[table]["insert"] += int64(len(values))
+		RowsStats[table]["insert"] += rows
 	} else {
-		RowsStats[table] = map[string]int64{"insert": int64(len(values))}
+		RowsStats[table] = map[string]int64{"insert": rows}
 	}
 }
 

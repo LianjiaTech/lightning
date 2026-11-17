@@ -15,6 +15,7 @@ package common
 
 import (
 	"flag"
+	"os"
 	"testing"
 	"time"
 
@@ -77,10 +78,33 @@ func TestTimeOffset(t *testing.T) {
 }
 
 func TestFlushReplicationInfo(t *testing.T) {
+	path := DevPath + "/common/fixture/master.info"
+	restore := preserveFile(t, path)
+	defer restore()
+
 	masterInfoOrg := Config.MySQL.MasterInfo
-	Config.MySQL.MasterInfo = DevPath + "/common/fixture/master.info"
+	Config.MySQL.MasterInfo = path
+	defer func() { Config.MySQL.MasterInfo = masterInfoOrg }()
 	FlushReplicationInfo()
-	Config.MySQL.MasterInfo = masterInfoOrg
+}
+
+// preserveFile makes sure a test that rewrites a tracked fixture leaves the
+// working tree clean, whether the test passes or fails.
+func preserveFile(t *testing.T, path string) func() {
+	t.Helper()
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err.Error())
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err.Error())
+	}
+	return func() {
+		if err := os.WriteFile(path, content, info.Mode()); err != nil {
+			t.Errorf("restore %s: %s", path, err.Error())
+		}
+	}
 }
 
 func TestSyncReplicationInfo(t *testing.T) {

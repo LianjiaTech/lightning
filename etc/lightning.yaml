@@ -10,6 +10,8 @@ global:
   charset: utf8mb4
   # CPU 使用限制
   cpu: 0
+  # GC 触发阈值百分比，0 表示批处理模式自动使用 300（-daemon 模式保持 Go 默认值）
+  gc-percent: 0
   # Verbose 模式，打印更多信息
   verbose: false
   # 设置时区，默认 Asia/Shanghai

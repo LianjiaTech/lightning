@@ -14,9 +14,11 @@
 package rebuild
 
 import (
+	"bytes"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/LianjiaTech/lightning/common"
@@ -97,7 +99,9 @@ func init() {
 	Schemas = make(map[string]*ast.CreateTableStmt)
 }
 
-// RowEventTable ...
+// RowEventTable returns the `schema`.`table` name of a row event. Row events
+// of the same table (a table map plus all its following row events) repeat the
+// lookup many times per event, so cache the formatted name per table id.
 func RowEventTable(event *replication.BinlogEvent) string {
 	if event == nil {
 		return ""
@@ -107,175 +111,262 @@ func RowEventTable(event *replication.BinlogEvent) string {
 		replication.UPDATE_ROWS_EVENTv0, replication.UPDATE_ROWS_EVENTv1, replication.UPDATE_ROWS_EVENTv2,
 		replication.PARTIAL_UPDATE_ROWS_EVENT,
 		replication.DELETE_ROWS_EVENTv0, replication.DELETE_ROWS_EVENTv1, replication.DELETE_ROWS_EVENTv2:
-		return fmt.Sprintf("`%s`.`%s`",
-			string(event.Event.(*replication.RowsEvent).Table.Schema),
-			string(event.Event.(*replication.RowsEvent).Table.Table))
+		ev := event.Event.(*replication.RowsEvent)
+		if ev.Table == nil {
+			return ""
+		}
+		if cached, ok := rowEventTableCache[ev.TableID]; ok &&
+			bytes.Equal(cached.schema, ev.Table.Schema) && bytes.Equal(cached.table, ev.Table.Table) {
+			return cached.name
+		}
+		name := fmt.Sprintf("`%s`.`%s`", ev.Table.Schema, ev.Table.Table)
+		rowEventTableCache[ev.TableID] = &rowEventTable{
+			schema: append([]byte(nil), ev.Table.Schema...),
+			table:  append([]byte(nil), ev.Table.Table...),
+			name:   name,
+		}
+		return name
 	}
 	return ""
 }
 
+type rowEventTable struct {
+	schema []byte
+	table  []byte
+	name   string
+}
+
+// rowEventTableCache maps a table id to its formatted name. Table ids can be
+// reused after a table map rewrite, so the cached schema/table bytes are
+// compared before reuse.
+var rowEventTableCache = make(map[uint64]*rowEventTable)
+
 // BuildValues build values list
 func BuildValues(event *replication.RowsEvent) [][]string {
-	mergePartialJSON(event.Rows)
-	table := fmt.Sprintf("`%s`.`%s`", string(event.Table.Schema), event.Table.Table)
-	var values [][]string
+	table := fmt.Sprintf("`%s`.`%s`", event.Table.Schema, event.Table.Table)
+
+	// The schema lookup and the unsigned flag used to be resolved for every
+	// column of every row; resolve them once per event instead.
+	var cols []*ast.ColumnDef
+	if schema, ok := Schemas[table]; ok && schema != nil {
+		cols = schema.Cols
+	}
+	columnTypes := event.Table.ColumnType
+
+	var buf []byte
+	values := make([][]string, 0, len(event.Rows))
 	for _, row := range event.Rows {
-		var columns []string
-		for i, t := range event.Table.ColumnType {
-			if row[i] == nil {
+		columns := make([]string, 0, len(columnTypes))
+		for i, t := range columnTypes {
+			v := row[i]
+			if v == nil {
 				columns = append(columns, "NULL")
 				continue
 			}
-			var unsigned bool
-			if ok := Schemas[table]; ok != nil {
-				if (Schemas[table].Cols[i].Tp.GetFlag() & mysql.UNSIGNED_FLAG) > 0 {
-					unsigned = true
-				}
-			}
-			switch t {
-			case mysql.MYSQL_TYPE_DECIMAL, mysql.MYSQL_TYPE_NEWDECIMAL, mysql.MYSQL_TYPE_FLOAT, mysql.MYSQL_TYPE_DOUBLE, mysql.MYSQL_TYPE_NULL,
-				mysql.MYSQL_TYPE_TIMESTAMP:
-				columns = append(columns, fmt.Sprint(row[i]))
-			// binlog use -1 for unsigned int max value
-			case mysql.MYSQL_TYPE_TINY:
-				if unsigned && fmt.Sprint(row[i]) == "-1" {
-					columns = append(columns, "255")
-				} else {
-					columns = append(columns, fmt.Sprint(row[i]))
-				}
-			case mysql.MYSQL_TYPE_SHORT:
-				if unsigned && fmt.Sprint(row[i]) == "-1" {
-					columns = append(columns, "65535")
-				} else {
-					columns = append(columns, fmt.Sprint(row[i]))
-				}
-			case mysql.MYSQL_TYPE_INT24:
-				if unsigned && fmt.Sprint(row[i]) == "-1" {
-					columns = append(columns, "16777215")
-				} else {
-					columns = append(columns, fmt.Sprint(row[i]))
-				}
-			case mysql.MYSQL_TYPE_LONG:
-				if unsigned && fmt.Sprint(row[i]) == "-1" {
-					columns = append(columns, "4294967295")
-				} else {
-					columns = append(columns, fmt.Sprint(row[i]))
-				}
-			case mysql.MYSQL_TYPE_LONGLONG:
-				if unsigned && fmt.Sprint(row[i]) == "-1" {
-					columns = append(columns, "18446744073709551615")
-				} else {
-					columns = append(columns, fmt.Sprint(row[i]))
-				}
-			case mysql.MYSQL_TYPE_DATE, mysql.MYSQL_TYPE_TIME, mysql.MYSQL_TYPE_DATETIME, mysql.MYSQL_TYPE_YEAR,
-				mysql.MYSQL_TYPE_NEWDATE, mysql.MYSQL_TYPE_TIMESTAMP2, mysql.MYSQL_TYPE_DATETIME2, mysql.MYSQL_TYPE_TIME2:
-				columns = append(columns, fmt.Sprint("'", row[i], "'"))
-			case mysql.MYSQL_TYPE_VARCHAR, mysql.MYSQL_TYPE_VAR_STRING, mysql.MYSQL_TYPE_STRING:
-				switch v := row[i].(type) {
-				case string:
-					if common.Config.Global.HexString {
-						columns = append(columns, fmt.Sprintf(`X'%s'`, hex.EncodeToString([]byte(v))))
-					} else {
-						// strconv.Quote will escape unicode \u0100
-						// escape function maybe not correct with multi byte charset
-						// columns = append(columns, strconv.Quote(v))
-						columns = append(columns, fmt.Sprintf(`"%s"`, escape(v)))
-					}
-				case []byte:
-					if common.Config.Global.HexString {
-						columns = append(columns, fmt.Sprintf(`X'%s'`, hex.EncodeToString(v)))
-					} else {
-						columns = append(columns, fmt.Sprintf(`"%s"`, escape(string(v))))
-					}
-				case int, int64, int32, int16, int8, uint64, uint32, uint16, uint8:
-					// SET ENUM
-					columns = append(columns, fmt.Sprint(v))
-				default:
-					columns = append(columns, fmt.Sprintf(`'%s'`, fmt.Sprint(v)))
-				}
-
-			// MySQL 8.0/8.4: ENUM and SET types - stored as integers in binlog
-			case mysql.MYSQL_TYPE_ENUM:
-				columns = append(columns, fmt.Sprint(row[i]))
-			case mysql.MYSQL_TYPE_SET:
-				columns = append(columns, fmt.Sprint(row[i]))
-
-			case mysql.MYSQL_TYPE_JSON:
-				// Safe type assertion with fallback
-				switch v := row[i].(type) {
-				case []byte:
-					columns = append(columns, fmt.Sprintf(`'%s'`, v))
-				case string:
-					columns = append(columns, fmt.Sprintf(`'%s'`, v))
-				default:
-					columns = append(columns, fmt.Sprintf(`'%s'`, fmt.Sprint(v)))
-				}
-			case mysql.MYSQL_TYPE_BIT:
-				// Safe type assertion with fallback
-				switch v := row[i].(type) {
-				case int64:
-					columns = append(columns, fmt.Sprintf(`%d`, v))
-				case int:
-					columns = append(columns, fmt.Sprintf(`%d`, v))
-				case uint64:
-					columns = append(columns, fmt.Sprintf(`%d`, v))
-				default:
-					columns = append(columns, fmt.Sprintf(`'%s'`, fmt.Sprint(v)))
-				}
-
-			// MySQL 8.0/8.4: GEOMETRY and Spatial types - stored as binary: 4-byte
-			// little-endian SRID (8.0+) followed by WKB
-			// Supports: GEOMETRY, POINT, LINESTRING, POLYGON, MULTIPOINT,
-			//           MULTILINESTRING, MULTIPOLYGON, GEOMETRYCOLLECTION
-			case mysql.MYSQL_TYPE_GEOMETRY:
-				var b []byte
-				switch v := row[i].(type) {
-				case []byte:
-					b = v
-				default:
-					b = []byte(fmt.Sprint(v))
-				}
-				wkb, srid, hasSRID := splitGeometry(b)
-				if hasSRID {
-					columns = append(columns, fmt.Sprintf(`ST_GeomFromWKB(X'%s', %d)`, hex.EncodeToString(wkb), srid))
-				} else {
-					columns = append(columns, fmt.Sprintf(`ST_GeomFromWKB(X'%s')`, hex.EncodeToString(wkb)))
-				}
-
-			// MySQL 9.0: VECTOR type - little-endian float32 array without any prefix;
-			// a binary literal is accepted directly when inserting into a VECTOR column
-			case mysql.MYSQL_TYPE_VECTOR:
-				// Safe type assertion with fallback
-				switch v := row[i].(type) {
-				case []byte:
-					columns = append(columns, fmt.Sprintf(`X'%s'`, hex.EncodeToString(v)))
-				default:
-					columns = append(columns, fmt.Sprintf(`X'%s'`, hex.EncodeToString([]byte(fmt.Sprint(v)))))
-				}
-
-			// MySQL 8.0/8.4: BLOB types - stored as binary data
-			case mysql.MYSQL_TYPE_TINY_BLOB, mysql.MYSQL_TYPE_BLOB, mysql.MYSQL_TYPE_MEDIUM_BLOB, mysql.MYSQL_TYPE_LONG_BLOB:
-				// Safe type assertion with fallback
-				switch v := row[i].(type) {
-				case []byte:
-					columns = append(columns, fmt.Sprintf(`X'%s'`, hex.EncodeToString(v)))
-				default:
-					columns = append(columns, fmt.Sprintf(`X'%s'`, hex.EncodeToString([]byte(fmt.Sprint(v)))))
-				}
-
-			default:
-				// Safe type assertion with fallback for unknown types
-				switch v := row[i].(type) {
-				case []byte:
-					columns = append(columns, fmt.Sprintf(`X'%s'`, hex.EncodeToString(v)))
-				default:
-					columns = append(columns, fmt.Sprintf(`'%s'`, fmt.Sprint(v)))
-				}
-			}
+			unsigned := i < len(cols) && cols[i] != nil &&
+				cols[i].Tp.GetFlag()&mysql.UNSIGNED_FLAG > 0
+			buf = appendColumnValue(buf[:0], v, t, unsigned)
+			columns = append(columns, string(buf))
 		}
 		values = append(values, columns)
 	}
 	return values
+}
+
+// appendColumnValue renders one binlog value as an SQL literal. Values are
+// formatted into the caller's scratch buffer with strconv/hex instead of
+// fmt.Sprintf to avoid reflection on every column of every row.
+func appendColumnValue(buf []byte, v any, t byte, unsigned bool) []byte {
+	switch t {
+	case mysql.MYSQL_TYPE_DECIMAL, mysql.MYSQL_TYPE_NEWDECIMAL, mysql.MYSQL_TYPE_FLOAT, mysql.MYSQL_TYPE_DOUBLE, mysql.MYSQL_TYPE_NULL,
+		mysql.MYSQL_TYPE_TIMESTAMP:
+		return appendAnyValue(buf, v)
+	// binlog use -1 for unsigned int max value
+	case mysql.MYSQL_TYPE_TINY:
+		if unsigned && isMinusOne(v) {
+			return append(buf, "255"...)
+		}
+		return appendAnyValue(buf, v)
+	case mysql.MYSQL_TYPE_SHORT:
+		if unsigned && isMinusOne(v) {
+			return append(buf, "65535"...)
+		}
+		return appendAnyValue(buf, v)
+	case mysql.MYSQL_TYPE_INT24:
+		if unsigned && isMinusOne(v) {
+			return append(buf, "16777215"...)
+		}
+		return appendAnyValue(buf, v)
+	case mysql.MYSQL_TYPE_LONG:
+		if unsigned && isMinusOne(v) {
+			return append(buf, "4294967295"...)
+		}
+		return appendAnyValue(buf, v)
+	case mysql.MYSQL_TYPE_LONGLONG:
+		if unsigned && isMinusOne(v) {
+			return append(buf, "18446744073709551615"...)
+		}
+		return appendAnyValue(buf, v)
+	case mysql.MYSQL_TYPE_DATE, mysql.MYSQL_TYPE_TIME, mysql.MYSQL_TYPE_DATETIME, mysql.MYSQL_TYPE_YEAR,
+		mysql.MYSQL_TYPE_NEWDATE, mysql.MYSQL_TYPE_TIMESTAMP2, mysql.MYSQL_TYPE_DATETIME2, mysql.MYSQL_TYPE_TIME2:
+		buf = append(buf, '\'')
+		buf = appendAnyValue(buf, v)
+		return append(buf, '\'')
+	case mysql.MYSQL_TYPE_VARCHAR, mysql.MYSQL_TYPE_VAR_STRING, mysql.MYSQL_TYPE_STRING:
+		switch x := v.(type) {
+		case string:
+			if common.Config.Global.HexString {
+				return appendHexLiteral(buf, []byte(x))
+			}
+			// strconv.Quote will escape unicode \u0100
+			// escape function maybe not correct with multi byte charset
+			buf = append(buf, '"')
+			buf = appendEscapedString(buf, x)
+			return append(buf, '"')
+		case []byte:
+			if common.Config.Global.HexString {
+				return appendHexLiteral(buf, x)
+			}
+			buf = append(buf, '"')
+			buf = appendEscapedBytes(buf, x)
+			return append(buf, '"')
+		case int, int64, int32, int16, int8, uint64, uint32, uint16, uint8:
+			// SET ENUM
+			return appendAnyValue(buf, x)
+		default:
+			return appendSingleQuoted(buf, v)
+		}
+
+	// MySQL 8.0/8.4: ENUM and SET types - stored as integers in binlog
+	case mysql.MYSQL_TYPE_ENUM, mysql.MYSQL_TYPE_SET:
+		return appendAnyValue(buf, v)
+
+	case mysql.MYSQL_TYPE_JSON:
+		return appendSingleQuoted(buf, v)
+	case mysql.MYSQL_TYPE_BIT:
+		switch x := v.(type) {
+		case int64, int, uint64:
+			return appendAnyValue(buf, x)
+		default:
+			return appendSingleQuoted(buf, v)
+		}
+
+	// MySQL 8.0/8.4: GEOMETRY and Spatial types - stored as binary: 4-byte
+	// little-endian SRID (8.0+) followed by WKB
+	// Supports: GEOMETRY, POINT, LINESTRING, POLYGON, MULTIPOINT,
+	//           MULTILINESTRING, MULTIPOLYGON, GEOMETRYCOLLECTION
+	case mysql.MYSQL_TYPE_GEOMETRY:
+		var b []byte
+		switch x := v.(type) {
+		case []byte:
+			b = x
+		default:
+			b = []byte(fmt.Sprint(x))
+		}
+		wkb, srid, hasSRID := splitGeometry(b)
+		buf = append(buf, "ST_GeomFromWKB(X'"...)
+		buf = hex.AppendEncode(buf, wkb)
+		if hasSRID {
+			buf = append(buf, '\'', ',', ' ')
+			buf = strconv.AppendInt(buf, int64(srid), 10)
+			return append(buf, ')')
+		}
+		return append(buf, '\'', ')')
+
+	// MySQL 9.0: VECTOR type - little-endian float32 array without any prefix;
+	// a binary literal is accepted directly when inserting into a VECTOR column
+	case mysql.MYSQL_TYPE_VECTOR:
+		switch x := v.(type) {
+		case []byte:
+			return appendHexLiteral(buf, x)
+		default:
+			return appendHexLiteral(buf, []byte(fmt.Sprint(x)))
+		}
+
+	// MySQL 8.0/8.4: BLOB types - stored as binary data
+	case mysql.MYSQL_TYPE_TINY_BLOB, mysql.MYSQL_TYPE_BLOB, mysql.MYSQL_TYPE_MEDIUM_BLOB, mysql.MYSQL_TYPE_LONG_BLOB:
+		switch x := v.(type) {
+		case []byte:
+			return appendHexLiteral(buf, x)
+		default:
+			return appendHexLiteral(buf, []byte(fmt.Sprint(x)))
+		}
+
+	default:
+		switch x := v.(type) {
+		case []byte:
+			return appendHexLiteral(buf, x)
+		default:
+			return appendSingleQuoted(buf, v)
+		}
+	}
+}
+
+// appendAnyValue appends the decimal/text form of a decoded binlog value.
+func appendAnyValue(buf []byte, v any) []byte {
+	switch x := v.(type) {
+	case string:
+		return append(buf, x...)
+	case []byte:
+		return append(buf, x...)
+	case int:
+		return strconv.AppendInt(buf, int64(x), 10)
+	case int8:
+		return strconv.AppendInt(buf, int64(x), 10)
+	case int16:
+		return strconv.AppendInt(buf, int64(x), 10)
+	case int32:
+		return strconv.AppendInt(buf, int64(x), 10)
+	case int64:
+		return strconv.AppendInt(buf, x, 10)
+	case uint:
+		return strconv.AppendUint(buf, uint64(x), 10)
+	case uint8:
+		return strconv.AppendUint(buf, uint64(x), 10)
+	case uint16:
+		return strconv.AppendUint(buf, uint64(x), 10)
+	case uint32:
+		return strconv.AppendUint(buf, uint64(x), 10)
+	case uint64:
+		return strconv.AppendUint(buf, x, 10)
+	case float32:
+		return strconv.AppendFloat(buf, float64(x), 'g', -1, 32)
+	case float64:
+		return strconv.AppendFloat(buf, x, 'g', -1, 64)
+	default:
+		return append(buf, fmt.Sprint(x)...)
+	}
+}
+
+func appendSingleQuoted(buf []byte, v any) []byte {
+	buf = append(buf, '\'')
+	buf = appendAnyValue(buf, v)
+	return append(buf, '\'')
+}
+
+func appendHexLiteral(buf []byte, b []byte) []byte {
+	buf = append(buf, 'X', '\'')
+	buf = hex.AppendEncode(buf, b)
+	return append(buf, '\'')
+}
+
+// isMinusOne reports whether a decoded integer is binlog's -1 placeholder for
+// an unsigned maximum value.
+func isMinusOne(v any) bool {
+	switch x := v.(type) {
+	case int:
+		return x == -1
+	case int8:
+		return x == -1
+	case int16:
+		return x == -1
+	case int32:
+		return x == -1
+	case int64:
+		return x == -1
+	default:
+		return false
+	}
 }
 
 // GTIDRebuild ...
@@ -305,6 +396,7 @@ func LastStatus() {
 	case "stat":
 		printBinlogStat()
 	}
+	defer common.FlushOut()
 	if Lua != nil {
 		if err := Lua.CallByParam(lua.P{
 			Fn:      Lua.GetGlobal("Finalizer"),
@@ -359,9 +451,9 @@ func printBinlogStat() {
 
 	buf, err := json.MarshalIndent(BinlogStats, "", "  ")
 	if err != nil {
-		fmt.Println(err)
+		common.Outln(err)
 	}
-	fmt.Println(string(buf))
+	common.Outln(string(buf))
 }
 
 // LuaStringList ...
@@ -417,41 +509,66 @@ func LoadLuaScript() {
 
 func escape(sql string) string {
 	dest := make([]byte, 0, 2*len(sql))
-	var escape byte
+	return string(appendEscapedString(dest, sql))
+}
+
+// appendEscapedString appends MySQL-escaped text to dst.
+func appendEscapedString(dst []byte, sql string) []byte {
+	var esc byte
 	for i := 0; i < len(sql); i++ {
 		c := sql[i]
-
-		escape = 0
-
+		esc = 0
 		switch c {
 		case 0: /* Must be escaped for 'mysql' */
-			escape = '0'
-			break
+			esc = '0'
 		case '\n': /* Must be escaped for logs */
-			escape = 'n'
-			break
+			esc = 'n'
 		case '\r':
-			escape = 'r'
-			break
+			esc = 'r'
 		case '\\':
-			escape = '\\'
-			break
+			esc = '\\'
 		case '\'':
-			escape = '\''
-			break
+			esc = '\''
 		case '"': /* Better safe than sorry */
-			escape = '"'
-			break
+			esc = '"'
 		case '\032': /* This gives problems on Win32 */
-			escape = 'Z'
+			esc = 'Z'
 		}
-
-		if escape != 0 {
-			dest = append(dest, '\\', escape)
+		if esc != 0 {
+			dst = append(dst, '\\', esc)
 		} else {
-			dest = append(dest, c)
+			dst = append(dst, c)
 		}
 	}
+	return dst
+}
 
-	return string(dest)
+// appendEscapedBytes appends MySQL-escaped bytes to dst.
+func appendEscapedBytes(dst []byte, sql []byte) []byte {
+	var esc byte
+	for _, c := range sql {
+		esc = 0
+		switch c {
+		case 0:
+			esc = '0'
+		case '\n':
+			esc = 'n'
+		case '\r':
+			esc = 'r'
+		case '\\':
+			esc = '\\'
+		case '\'':
+			esc = '\''
+		case '"':
+			esc = '"'
+		case '\032':
+			esc = 'Z'
+		}
+		if esc != 0 {
+			dst = append(dst, '\\', esc)
+		} else {
+			dst = append(dst, c)
+		}
+	}
+	return dst
 }

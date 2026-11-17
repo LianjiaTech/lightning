@@ -74,6 +74,9 @@ func captureOutput(f func()) string {
 	// execute function
 	f()
 
+	// generated SQL is buffered, flush it into the pipe before closing
+	FlushOut()
+
 	// back to normal state
 	if err := w.Close(); err != nil {
 		panic(err)

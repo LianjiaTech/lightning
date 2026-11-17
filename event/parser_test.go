@@ -124,6 +124,9 @@ func captureBinlogOutput(t *testing.T, schemaFile, binlogFile string) string {
 }
 
 func TestBinlogStreamParser(t *testing.T) {
+	restore := preserveFile(t, common.DevPath+"/etc/master.info")
+	defer restore()
+
 	masterInfoOrg := common.Config.MySQL.MasterInfo
 	stopPositionOrg := common.Config.Filters.StopPosition
 	replicateFromCurrentOrg := common.Config.MySQL.ReplicateFromCurrentPosition
@@ -171,5 +174,24 @@ func generateBinlogEvent(t *testing.T) {
 	}
 	if _, err := db.Exec("INSERT INTO test_binlog_stream (v) VALUES (1)"); err != nil {
 		t.Skipf("skip stream test, insert: %v", err)
+	}
+}
+
+// preserveFile makes sure a test that rewrites a tracked fixture leaves the
+// working tree clean, whether the test passes or fails.
+func preserveFile(t *testing.T, path string) func() {
+	t.Helper()
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err.Error())
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err.Error())
+	}
+	return func() {
+		if err := os.WriteFile(path, content, info.Mode()); err != nil {
+			t.Errorf("restore %s: %s", path, err.Error())
+		}
 	}
 }

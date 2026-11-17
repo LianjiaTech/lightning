@@ -25,9 +25,15 @@ func main() {
 
 	// load config from lightning.yaml, master.info, relay.info, command lines
 	common.ParseConfig()
+	// generated SQL goes through a buffered writer
+	defer common.FlushOut()
 
-	// load table schema info from mysql or create table SQL file
-	rebuild.LoadSchemaInfo()
+	// load table schema info from mysql or create table SQL file.
+	// The stat plugin only needs table names and row counts, so loading and
+	// maintaining schemas is pure overhead there.
+	if common.Config.Rebuild.Plugin != "stat" {
+		rebuild.LoadSchemaInfo()
+	}
 
 	// load lua script
 	rebuild.LoadLuaScript()

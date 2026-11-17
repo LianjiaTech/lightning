@@ -21,6 +21,7 @@ import (
 	"math/rand"
 	"os"
 	"runtime"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"time"
@@ -44,6 +45,7 @@ type GlobalConfig struct {
 	Charset        string         `yaml:"charset"`
 	HexString      bool           `yaml:"hex-string"`      // string, varchar 等数据是否使用 hex 转义，防止数据转换
 	CPU            int            `yaml:"cpu"`             // CPU core limit
+	GCPercent      int            `yaml:"gc-percent"`      // GC target percentage, 0 = auto (300 batch, Go default daemon)
 	Verbose        bool           `yaml:"verbose"`         // more info to print
 	VerboseVerbose bool           `yaml:"verbose-verbose"` // more and more info to print
 	TimeZone       string         `yaml:"time-zone"`       // "UTC", "Asia/Shanghai"
@@ -249,6 +251,7 @@ func ParseConfig() {
 	globalTimeZone := flag.String("time-zone", "", "time zone info")
 	globalCharset := flag.String("charset", "", "charset use for binlog parsing")
 	globalCPU := flag.Int("cpu", 0, "cpu cores limit")
+	globalGCPercent := flag.Int("gc-percent", 0, "GC target percentage, 0 uses 300 for batch mode and Go default for daemon")
 	globalVerbose := flag.Bool("verbose", false, "verbose mode, more info will print")
 	globalVerboseVerbose := flag.Bool("vv", false, "verbose verbose mode, more and more info will print")
 	globalDaemon := flag.Bool("daemon", false, "replication run as daemon")
@@ -361,6 +364,9 @@ func ParseConfig() {
 	if *globalCPU > 0 {
 		Config.Global.CPU = *globalCPU
 		runtime.GOMAXPROCS(*globalCPU)
+	}
+	if *globalGCPercent != 0 {
+		Config.Global.GCPercent = *globalGCPercent
 	}
 	if *globalVerbose {
 		Config.Global.Verbose = *globalVerbose
@@ -627,7 +633,34 @@ func ParseConfig() {
 		os.Exit(0)
 	}
 
+	normalizeConfig()
 	loggerInit()
+	tuneGC()
+}
+
+// normalizeConfig pre-computes values that are used in per-event hot paths.
+func normalizeConfig() {
+	for i, t := range Config.Filters.EventType {
+		Config.Filters.EventType[i] = strings.ToLower(t)
+	}
+}
+
+// tuneGC raises the GC target for batch mode. Parsing binlogs allocates
+// heavily and the default GOGC=100 spends a large share of the CPU in the
+// collector. The GC environment variable wins when it is set explicitly, and
+// long-running daemons keep Go's default to bound memory usage.
+func tuneGC() {
+	if os.Getenv("GOGC") != "" {
+		return
+	}
+	percent := Config.Global.GCPercent
+	if percent == 0 {
+		if Config.Global.Daemon {
+			return
+		}
+		percent = 300
+	}
+	debug.SetGCPercent(percent)
 }
 
 // PrintConfiguration for `-print-config` flag

@@ -25,6 +25,11 @@ import (
 
 // UpdateRebuild ...
 func UpdateRebuild(event *replication.BinlogEvent) string {
+	// Only partial JSON updates carry JsonDiff values that need merging; skip
+	// the extra pass over every row for ordinary update events.
+	if event.Header.EventType == replication.PARTIAL_UPDATE_ROWS_EVENT {
+		mergePartialJSON(event.Event.(*replication.RowsEvent).Rows)
+	}
 	switch common.Config.Rebuild.Plugin {
 	case "sql":
 		UpdateQuery(event)
@@ -44,7 +49,7 @@ func UpdateQuery(event *replication.BinlogEvent) {
 	var table string
 	defer func() {
 		if r := recover(); r != nil {
-			fmt.Printf("-- Table: %s, Error: %s\n", table, strings.Split(fmt.Sprint(r), "\n")[0])
+			common.Outf("-- Table: %s, Error: %s\n", table, strings.Split(fmt.Sprint(r), "\n")[0])
 		}
 	}()
 	table = RowEventTable(event)
@@ -115,9 +120,9 @@ func updateQuery(table string, values [][]string) {
 				}
 
 				if common.Config.Rebuild.WithoutDBName {
-					fmt.Printf("%s %s SET %s WHERE %s LIMIT 1;\n", updatePrefix, shortTableName, strings.Join(set, ", "), strings.Join(where, " AND "))
+					common.Outf("%s %s SET %s WHERE %s LIMIT 1;\n", updatePrefix, shortTableName, strings.Join(set, ", "), strings.Join(where, " AND "))
 				} else {
-					fmt.Printf("%s %s SET %s WHERE %s LIMIT 1;\n", updatePrefix, table, strings.Join(set, ", "), strings.Join(where, " AND "))
+					common.Outf("%s %s SET %s WHERE %s LIMIT 1;\n", updatePrefix, table, strings.Join(set, ", "), strings.Join(where, " AND "))
 				}
 			}
 		}
@@ -138,9 +143,9 @@ func updateQuery(table string, values [][]string) {
 					set = append(set, fmt.Sprintf("@%d = %s", i, v))
 				}
 				if common.Config.Rebuild.WithoutDBName {
-					fmt.Printf("-- %s %s SET %s WHERE %s LIMIT 1;\n", updatePrefix, shortTableName, strings.Join(set, ", "), strings.Join(where, " AND "))
+					common.Outf("-- %s %s SET %s WHERE %s LIMIT 1;\n", updatePrefix, shortTableName, strings.Join(set, ", "), strings.Join(where, " AND "))
 				} else {
-					fmt.Printf("-- %s %s SET %s WHERE %s LIMIT 1;\n", updatePrefix, table, strings.Join(set, ", "), strings.Join(where, " AND "))
+					common.Outf("-- %s %s SET %s WHERE %s LIMIT 1;\n", updatePrefix, table, strings.Join(set, ", "), strings.Join(where, " AND "))
 				}
 			}
 		}
@@ -152,7 +157,7 @@ func UpdateRollbackQuery(event *replication.BinlogEvent) {
 	var table string
 	defer func() {
 		if r := recover(); r != nil {
-			fmt.Printf("-- Table: %s, Error: %s\n", table, strings.Split(fmt.Sprint(r), "\n")[0])
+			common.Outf("-- Table: %s, Error: %s\n", table, strings.Split(fmt.Sprint(r), "\n")[0])
 		}
 	}()
 	table = RowEventTable(event)
@@ -210,7 +215,7 @@ func updateRollbackQuery(table string, values [][]string) {
 						}
 					}
 				}
-				fmt.Printf("UPDATE %s SET %s WHERE %s LIMIT 1;\n", table, strings.Join(set, ", "), strings.Join(where, " AND "))
+				common.Outf("UPDATE %s SET %s WHERE %s LIMIT 1;\n", table, strings.Join(set, ", "), strings.Join(where, " AND "))
 			}
 		}
 	} else {
@@ -229,7 +234,7 @@ func updateRollbackQuery(table string, values [][]string) {
 						where = append(where, fmt.Sprintf("@%d = %s", i, v))
 					}
 				}
-				fmt.Printf("-- UPDATE %s SET %s WHERE %s  LIMIT 1;\n", table, strings.Join(set, ", "), strings.Join(where, " AND "))
+				common.Outf("-- UPDATE %s SET %s WHERE %s  LIMIT 1;\n", table, strings.Join(set, ", "), strings.Join(where, " AND "))
 			}
 		}
 	}
@@ -244,12 +249,13 @@ func UpdateStat(event *replication.BinlogEvent) {
 		TableStats[table] = map[string]int64{"update": 1}
 	}
 
+	// rows only need counting here, no need to format every value
 	ev := event.Event.(*replication.RowsEvent)
-	values := BuildValues(ev)
+	rows := int64(len(ev.Rows))
 	if RowsStats[table] != nil {
-		RowsStats[table]["update"] += int64(len(values))
+		RowsStats[table]["update"] += rows
 	} else {
-		RowsStats[table] = map[string]int64{"update": int64(len(values))}
+		RowsStats[table] = map[string]int64{"update": rows}
 	}
 }
 
